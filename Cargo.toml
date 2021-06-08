@@ -1,0 +1,23 @@
+[package]
+name = "rss-actions"
+version = "0.1.0"
+authors = ["Harry Stern <harry@harrystern.net>"]
+edition = "2018"
+
+[[bin]]
+name = "rss-actions"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "^1"
+chrono = "0.4"
+directories = "^3"
+rss = "^1"
+rusqlite = { version = "0.25", features = ["url", "chrono"] }
+serde = { version = "^1", features = ["derive"] }
+serde_derive = "^1"
+toml = "0.5"
+url = "^2"
+
+[dev-dependencies]
+tempfile = "^3"
