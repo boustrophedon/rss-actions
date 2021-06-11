@@ -1,8 +1,7 @@
-only test public interface of cli? i.e. clap/structopt structs as input and command execution functionality
-
-add_feed should just take parameters
-feeds table last_updated should be optional so that on first filter it will know to add everything
-
-feeds table alias should be unique
+update command
+  - dry run
 
 
+
+probably will never do:
+add verbose flag to list filters command to show full script path

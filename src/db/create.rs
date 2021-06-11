@@ -15,11 +15,13 @@ impl<'conn> RSSActionsTx<'conn> {
             )", []).context("failed to create feeds table")?;
         self.tx.execute(
             "CREATE TABLE filters (
-                url_id INTEGER NOT NULL,
-                filter TEXT NOT NULL,
+                id INTEGER PRIMARY KEY,
+                feed_id INTEGER NOT NULL,
+                keywords TEXT NOT NULL,
+                script_path TEXT NOT NULL,
                 last_updated TEXT,
-                action_path TEXT NOT NULL,
-                FOREIGN KEY (url_id) REFERENCES feeds(id)
+                FOREIGN KEY (feed_id) REFERENCES feeds(id),
+                UNIQUE(feed_id,keywords,script_path)
             )", []).context("failed to create filters table")?;
 
         Ok(())

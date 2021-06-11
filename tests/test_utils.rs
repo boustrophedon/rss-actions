@@ -5,6 +5,8 @@ use rss_actions::*;
 
 use tempfile::{TempDir, tempdir};
 
+use std::path::PathBuf;
+
 /// Create a test config with the database in a temporary directory. We return the TempDir because
 /// it is deleted when it is dropped.
 ///
@@ -36,6 +38,10 @@ pub fn example_list_feeds() -> RSSActionCmd {
     RSSActionCmd::ListFeeds
 }
 
+pub fn example_list_filters() -> RSSActionCmd {
+    RSSActionCmd::ListFilters
+}
+
 pub fn example_add_feed1() -> RSSActionCmd {
     RSSActionCmd::AddFeed(
         Feed::new(url::Url::parse("https://example.com/feed.rss").unwrap(), "example_1")
@@ -45,5 +51,74 @@ pub fn example_add_feed1() -> RSSActionCmd {
 pub fn example_add_feed2() -> RSSActionCmd {
     RSSActionCmd::AddFeed(
         Feed::new(url::Url::parse("https://example.org/feed2.rss").unwrap(), "example_2_org")
+    )
+}
+
+pub fn example_script_path1() -> PathBuf {
+    let mut script_path = std::path::PathBuf::new();
+    script_path.push(env!("CARGO_MANIFEST_DIR"));
+    script_path.push("test");
+    script_path.push("scripts");
+    script_path.push("print_data");
+
+    script_path
+}
+
+pub fn example_script_path2() -> PathBuf {
+    let mut script_path = std::path::PathBuf::new();
+    script_path.push("/bin/false");
+
+    script_path
+}
+
+fn to_strings(strs: Vec<&str>) -> Vec<String> {
+    strs.iter().map(|s| s.to_string()).collect()
+}
+
+/// Example filter with empty filter keywords
+pub fn example_add_filter_empty() -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        "example_1".into(), vec![], example_script_path2()
+    )
+}
+
+pub fn example_add_filter1() -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        "example_1".into(), to_strings(vec!["test"]), example_script_path1()
+    )
+}
+
+/// Same feed as filter1 but with different filter keywords
+pub fn example_add_filter2() -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        "example_1".into(), to_strings(vec!["test", "other_keyword"]), example_script_path1()
+    )
+}
+
+/// Same feed and keywords as filter1 but different script path
+pub fn example_add_filter3() -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        "example_1".into(), to_strings(vec!["test"]), example_script_path2()
+    )
+}
+
+/// different feed than filters1,2,3
+pub fn example_add_filter4() -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        "example_2_org".into(), to_strings(vec!["test", "other_keyword"]), example_script_path1()
+    )
+}
+
+/// non-existant feed
+pub fn example_add_filter_bad_feed_alias() -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        "example_nonexistant".into(), to_strings(vec!["fake"]), example_script_path2()
+    )
+}
+
+/// Same feed and filters and script path as filter 2 but with filters in different order
+pub fn example_add_filter_same_keywords_different_order() -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        "example_1".into(), to_strings(vec!["other_keyword", "test"]), example_script_path1()
     )
 }
