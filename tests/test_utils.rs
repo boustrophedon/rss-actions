@@ -44,20 +44,20 @@ pub fn example_list_filters() -> RSSActionCmd {
 
 pub fn example_add_feed1() -> RSSActionCmd {
     RSSActionCmd::AddFeed(
-        Feed::new(url::Url::parse("https://example.com/feed.rss").unwrap(), "example_1")
+        Feed::new(url::Url::parse("https://example.com/feed.rss").unwrap(), "example_1").unwrap()
     )
 }
 
 pub fn example_add_feed2() -> RSSActionCmd {
     RSSActionCmd::AddFeed(
-        Feed::new(url::Url::parse("https://example.org/feed2.rss").unwrap(), "example_2_org")
+        Feed::new(url::Url::parse("https://example.org/feed2.rss").unwrap(), "example_2_org").unwrap()
     )
 }
 
 pub fn example_script_path1() -> PathBuf {
     let mut script_path = std::path::PathBuf::new();
     script_path.push(env!("CARGO_MANIFEST_DIR"));
-    script_path.push("test");
+    script_path.push("tests");
     script_path.push("scripts");
     script_path.push("print_data");
 
@@ -78,47 +78,47 @@ fn to_strings(strs: Vec<&str>) -> Vec<String> {
 /// Example filter with empty filter keywords
 pub fn example_add_filter_empty() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
-        "example_1".into(), vec![], example_script_path2()
+        Filter::new("example_1", vec![], example_script_path2()).unwrap()
     )
 }
 
 pub fn example_add_filter1() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
-        "example_1".into(), to_strings(vec!["test"]), example_script_path1()
+        Filter::new("example_1", to_strings(vec!["test"]), example_script_path1()).unwrap()
     )
 }
 
 /// Same feed as filter1 but with different filter keywords
 pub fn example_add_filter2() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
-        "example_1".into(), to_strings(vec!["test", "other_keyword"]), example_script_path1()
+        Filter::new("example_1", to_strings(vec!["test", "other_keyword"]), example_script_path1()).unwrap()
     )
 }
 
 /// Same feed and keywords as filter1 but different script path
 pub fn example_add_filter3() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
-        "example_1".into(), to_strings(vec!["test"]), example_script_path2()
+        Filter::new("example_1", to_strings(vec!["test"]), example_script_path2()).unwrap()
     )
 }
 
 /// different feed than filters1,2,3
 pub fn example_add_filter4() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
-        "example_2_org".into(), to_strings(vec!["test", "other_keyword"]), example_script_path1()
+        Filter::new("example_2_org", to_strings(vec!["test", "other_keyword"]), example_script_path1()).unwrap()
     )
 }
 
 /// non-existant feed
 pub fn example_add_filter_bad_feed_alias() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
-        "example_nonexistant".into(), to_strings(vec!["fake"]), example_script_path2()
+        Filter::new("example_nonexistant", to_strings(vec!["fake"]), example_script_path2()).unwrap()
     )
 }
 
 /// Same feed and filters and script path as filter 2 but with filters in different order
 pub fn example_add_filter_same_keywords_different_order() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
-        "example_1".into(), to_strings(vec!["other_keyword", "test"]), example_script_path1()
+        Filter::new("example_1", to_strings(vec!["other_keyword", "test"]), example_script_path1()).unwrap()
     )
 }

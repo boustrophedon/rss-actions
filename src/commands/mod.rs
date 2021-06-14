@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
 use chrono::*;
 
@@ -14,7 +12,7 @@ pub enum RSSActionCmd {
     ListFilters,
     AddFeed(Feed),
     /// Feed alias, list of filter keywords, script path
-    AddFilter(String, Vec<String>, PathBuf),
+    AddFilter(Filter),
 }
 
 impl RSSActionCmd {
@@ -26,8 +24,8 @@ impl RSSActionCmd {
             RSSActionCmd::ListFeeds => RSSActionCmd::list_feeds(&tx),
             RSSActionCmd::ListFilters => RSSActionCmd::list_filters(&tx),
             RSSActionCmd::AddFeed(feed) => RSSActionCmd::add_feed(&tx, feed),
-            RSSActionCmd::AddFilter(alias, keywords, script_path) =>
-                RSSActionCmd::add_filter(&tx, alias, keywords, script_path),
+            RSSActionCmd::AddFilter(filter) =>
+                RSSActionCmd::add_filter(&tx, filter),
         };
 
         if result.is_ok() {
@@ -90,15 +88,8 @@ impl RSSActionCmd {
         Ok(output)
     }
 
-    fn add_filter(tx: &RSSActionsTx, alias: String, keywords: Vec<String>, script_path: PathBuf)
+    fn add_filter(tx: &RSSActionsTx, filter: Filter)
          -> Result<Vec<String>> {
-        let filter = Filter {
-            alias,
-            keywords,
-            script_path,
-            last_updated: None
-        };
-
         tx.store_filter(&filter)?;
 
         Ok(vec![format!("Successfully added filter on feed {}", filter.alias),
