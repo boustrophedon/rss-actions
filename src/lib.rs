@@ -1,4 +1,5 @@
 pub(crate) mod db;
+pub(crate) mod update;
 
 pub mod models;
 pub use models::*;

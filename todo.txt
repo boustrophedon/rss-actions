@@ -1,20 +1,16 @@
-db: update filter with last updated time
-
-high level: `rss-actions update`
-fetch feeds from db
-download feeds from urls
-  - sort by pubDate
-fetch filters from db
-for each filter:
-  most_recent_update = filter.last_updated
-  for each entry in the filter's feed:
-    if most_recent_update is none or most_recent_update < entry.pubDate:
-      run filter.script with feed data (dry run: print)
-  set last_updated in db to most_recent_update (dry run: print most recent update)
+delete alias:
+  url
+delete filter:
+  alias, subset of filter keywords
+  by default only allow one row to be deleted
+  delete --all flag allows to delete more than one filter at a time
 
 
+option to use cookies when downloading feeds
+  per feed? file? or values?
+  would need to add ability to update feed cookies if not in a file
 
-in update inner loop, add option to use lastBuildDate instead of pubDate
 
 probably will never do:
+in update inner loop, add option to use lastBuildDate instead of pubDate
 add verbose flag to list filters command to show full script path

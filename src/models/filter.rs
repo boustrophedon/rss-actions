@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Filter {
     /// The feed alias this filter is associated with.
     pub alias: String,
@@ -52,5 +52,9 @@ impl Filter {
 
     pub fn update_time(&mut self, update_time: DateTime<Utc>) {
         self.last_updated = Some(update_time);
+    }
+
+    pub fn matches_keywords(&self, s: &str) -> bool {
+        self.keywords.iter().all(|w| s.contains(w))
     }
 }

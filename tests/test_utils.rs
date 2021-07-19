@@ -4,8 +4,10 @@
 use rss_actions::*;
 
 use tempfile::{TempDir, tempdir};
+use url::Url;
 
-use std::path::PathBuf;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 /// Create a test config with the database in a temporary directory. We return the TempDir because
 /// it is deleted when it is dropped.
@@ -34,6 +36,10 @@ pub fn temp_config() -> (TempDir, Config) {
     (test_dir, cfg)
 }
 
+//// Example no-parameter commands
+//// We could write these inline but if they need to change it's nice to uniformly have them behind
+//// convenience functions.
+
 pub fn example_list_feeds() -> RSSActionCmd {
     RSSActionCmd::ListFeeds
 }
@@ -41,6 +47,12 @@ pub fn example_list_feeds() -> RSSActionCmd {
 pub fn example_list_filters() -> RSSActionCmd {
     RSSActionCmd::ListFilters
 }
+
+pub fn example_update() -> RSSActionCmd {
+    RSSActionCmd::Update
+}
+
+//// Example Feeds
 
 pub fn example_add_feed1() -> RSSActionCmd {
     RSSActionCmd::AddFeed(
@@ -54,26 +66,27 @@ pub fn example_add_feed2() -> RSSActionCmd {
     )
 }
 
-pub fn example_script_path1() -> PathBuf {
-    let mut script_path = std::path::PathBuf::new();
-    script_path.push(env!("CARGO_MANIFEST_DIR"));
-    script_path.push("tests");
-    script_path.push("scripts");
-    script_path.push("print_data");
-
-    script_path
+/// Add a feed with url pointing to a local server. The name doesn't actually matter and the URL
+/// doesn't have to be a local server, that's just what it's being used for.
+pub fn example_add_feed_local1(url: Url) -> RSSActionCmd {
+    RSSActionCmd::AddFeed(
+        Feed::new(url, "local1").unwrap()
+    )
 }
 
-pub fn example_script_path2() -> PathBuf {
-    let mut script_path = std::path::PathBuf::new();
-    script_path.push("/bin/false");
-
-    script_path
+pub fn example_add_feed_local2(url: Url) -> RSSActionCmd {
+    RSSActionCmd::AddFeed(
+        Feed::new(url, "local2").unwrap()
+    )
 }
 
-fn to_strings(strs: Vec<&str>) -> Vec<String> {
-    strs.iter().map(|s| s.to_string()).collect()
+pub fn example_add_feed_local3(url: Url) -> RSSActionCmd {
+    RSSActionCmd::AddFeed(
+        Feed::new(url, "local3").unwrap()
+    )
 }
+
+//// Example Filters
 
 /// Example filter with empty filter keywords
 pub fn example_add_filter_empty() -> RSSActionCmd {
@@ -102,14 +115,14 @@ pub fn example_add_filter3() -> RSSActionCmd {
     )
 }
 
-/// different feed than filters1,2,3
+/// filter with different feed than filters1,2,3
 pub fn example_add_filter4() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
         Filter::new("example_2_org", to_strings(vec!["test", "other_keyword"]), example_script_path1()).unwrap()
     )
 }
 
-/// non-existant feed
+/// filter with non-existant feed
 pub fn example_add_filter_bad_feed_alias() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
         Filter::new("example_nonexistant", to_strings(vec!["fake"]), example_script_path2()).unwrap()
@@ -121,4 +134,84 @@ pub fn example_add_filter_same_keywords_different_order() -> RSSActionCmd {
     RSSActionCmd::AddFilter(
         Filter::new("example_1", to_strings(vec!["other_keyword", "test"]), example_script_path1()).unwrap()
     )
+}
+
+/// filters using local server feed alias 1,2,3
+pub fn example_add_filter_local1(strings: Vec<&str>, script_path: PathBuf) -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        Filter::new("local1", to_strings(strings), script_path).unwrap()
+    )
+}
+pub fn example_add_filter_local2(strings: Vec<&str>, script_path: PathBuf) -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        Filter::new("local2", to_strings(strings), script_path).unwrap()
+    )
+}
+pub fn example_add_filter_local3(strings: Vec<&str>, script_path: PathBuf) -> RSSActionCmd {
+    RSSActionCmd::AddFilter(
+        Filter::new("local3", to_strings(strings), script_path).unwrap()
+    )
+}
+
+//// Utility functions
+
+fn to_strings(strs: Vec<&str>) -> Vec<String> {
+    strs.iter().map(|s| s.to_string()).collect()
+}
+
+pub fn example_script_path1() -> PathBuf {
+    let mut script_path = std::path::PathBuf::new();
+    script_path.push(env!("CARGO_MANIFEST_DIR"));
+    script_path.push("tests");
+    script_path.push("scripts");
+    script_path.push("print_data");
+
+    script_path
+}
+
+pub fn example_script_path2() -> PathBuf {
+    let mut script_path = std::path::PathBuf::new();
+    script_path.push("/bin/false");
+
+    script_path
+}
+
+/// A script that outputs data about the relevant enviroment variables passed into it when run
+/// during `rss-actions update`.
+static SCRIPT_TEMPLATE: &str =
+"#!/bin/bash
+
+OUTPUT={output_file}
+# this line redirects stdout and stderr to the log file for the entire program
+# see https://github.com/koalaman/shellcheck/wiki/SC2129 and
+# https://mywiki.wooledge.org/BashFAQ/014
+exec >> $OUTPUT 2>&1
+
+echo rss action script start
+echo title: $RSSACTIONS_ENTRY_TITLE
+echo url: $RSSACTIONS_ENTRY_URL
+echo rss action script end
+";
+
+/// The script writes the data out to a file for verification that it's executing and the data
+/// received by the script is correct.
+///
+/// The script is written to `exec_dir/data_script.sh` and the log is written to
+/// `exec_dir/test_script_log.txt`.
+pub fn temp_log_data_script(exec_dir: &Path) -> (PathBuf, PathBuf) {
+    let script_path = exec_dir.join("data_script.sh");
+    let log_path = exec_dir.join("test_script_log.txt");
+
+    // populate logfile (in test temp directory) file path into script
+    // and write script to script file
+    let script_contents = SCRIPT_TEMPLATE.replace("{output_file}", &log_path.to_string_lossy());
+    std::fs::write(&script_path, script_contents).unwrap();
+
+    // set permissions on script file
+    let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script_path, perms).unwrap();
+
+
+    (script_path, log_path)
 }

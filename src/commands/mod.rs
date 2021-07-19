@@ -11,14 +11,14 @@ pub enum RSSActionCmd {
     ListFeeds,
     ListFilters,
     AddFeed(Feed),
-    /// Feed alias, list of filter keywords, script path
     AddFilter(Filter),
+    Update,
 }
 
 impl RSSActionCmd {
     pub fn execute(self, cfg: &Config) -> Result<Vec<String>> {
         let mut db = RSSActionsDb::open(&cfg.db_path)?;
-        let tx = db.transaction()?;
+        let mut tx = db.transaction()?;
 
         let result = match self {
             RSSActionCmd::ListFeeds => RSSActionCmd::list_feeds(&tx),
@@ -26,6 +26,7 @@ impl RSSActionCmd {
             RSSActionCmd::AddFeed(feed) => RSSActionCmd::add_feed(&tx, feed),
             RSSActionCmd::AddFilter(filter) =>
                 RSSActionCmd::add_filter(&tx, filter),
+            RSSActionCmd::Update => RSSActionCmd::update(&mut tx),
         };
 
         if result.is_ok() {
@@ -94,5 +95,9 @@ impl RSSActionCmd {
 
         Ok(vec![format!("Successfully added filter on feed {}", filter.alias),
                 format!("Keywords: {}", filter.keywords.join(", "))])
+    }
+
+    fn update(tx: &mut RSSActionsTx) -> Result<Vec<String>> {
+        crate::update::update(tx)
     }
 }

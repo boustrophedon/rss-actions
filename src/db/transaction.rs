@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::named_params;
 use url::Url;
@@ -35,7 +35,6 @@ impl<'conn> RSSActionsTx<'conn> {
                 })
             }).collect();
 
-        //rows.into_iter().collect()
     }
 
     pub fn store_filter(&self, filter: &Filter) -> Result<()> {
@@ -99,5 +98,48 @@ impl<'conn> RSSActionsTx<'conn> {
                 })
             }).collect();
 
+    }
+
+    /// Update filter last_updated keyed on alias, keywords, and script path
+    pub fn update_filter(&mut self, filter: &Filter) -> Result<()> {
+        // Sort the filters list and then join with the "unit separator" ascii character into a
+        // single string to serialize in the database.
+        let mut sorted_keywords: Vec<String> = filter.keywords.iter().cloned().collect();
+        sorted_keywords.sort();
+
+        let sp = self.tx.savepoint()?;
+        let keywords = sorted_keywords.join("\x1F");
+        let res = sp.execute(
+            "UPDATE filters
+            SET last_updated = :last_updated
+            WHERE
+                feed_id = (SELECT id FROM feeds WHERE feeds.alias = :alias) AND
+                keywords = :keywords AND
+                script_path = :script_path",
+            named_params!{":alias": &filter.alias, ":keywords": keywords,
+                    ":script_path": &filter.script_path.to_string_lossy(), ":last_updated": &filter.last_updated})
+            .with_context(|| format!("Failed to update filter {:?} {:?} {:?} in db with new time {:?}",
+                    &filter.alias, &keywords, &filter.script_path, &filter.last_updated));
+
+        // Add custom error messages for certain errors.
+        match res {
+            Ok(count) => {
+                if count == 0 {
+                    return Err(anyhow!("No filter was found to update that matches {:?}", filter));
+                }
+                else if count > 1 {
+                    return Err(anyhow!("More than one filter was updated when updating {:?}", filter));
+                }
+            }
+            Err(err) => {
+                return Err(err)
+                    .with_context(|| format!("A database error occurred updating a filter {:?}", filter));
+            }
+        }
+
+        // If no error, commit subtransaction and return result as normal, ignoring count
+        sp.commit()
+            .with_context(|| format!("Failed to commit subtransaction savepoint updating filter {:?}", filter))?;
+        return res.map(|_| ());
     }
 }

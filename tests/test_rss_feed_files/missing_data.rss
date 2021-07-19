@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+<channel>
+ <title>Two entries RSS Title</title>
+ <description>This is an example of an RSS feed</description>
+ <link>http://www.example.com/main.html</link>
+ <copyright>2020 Example.com All rights reserved</copyright>
+ <lastBuildDate>Mon, 06 Sep 2010 00:01:00 +0000 </lastBuildDate>
+ <pubDate>Sun, 06 Sep 2009 16:20:00 +0000</pubDate>
+ <ttl>1800</ttl>
+
+ <item>
+  <title>This entry is missing the link and pubdate</title>
+  <description>Here is some text containing an interesting description.</description>
+ </item>
+ <item>
+  <title>Pizza Example marshmallow entry with random listener words interspersed</title>
+  <description>Also a description</description>
+  <link>http://www.example.com/blog/post/1</link>
+  <pubDate>Sun, 06 Sep 2009 10:00:00 +0000</pubDate>
+ </item>
+
+</channel>
+</rss>
