@@ -1,33 +1,22 @@
 use anyhow::Result;
-use chrono::*;
 
 use crate::db::{RSSActionsDb, RSSActionsTx};
-use crate::models::Feed;
-use crate::models::Filter;
 use crate::config::Config;
 
+pub mod inputs;
+pub mod outputs;
+pub use inputs::*;
+pub use outputs::*;
 
-pub enum RSSActionCmd {
-    ListFeeds,
-    ListFilters,
-    AddFeed(Feed),
-    AddFilter(Filter),
-    Update,
-}
 
-impl RSSActionCmd {
-    pub fn execute(self, cfg: &Config) -> Result<Vec<String>> {
+pub trait RSSActionCmd {
+    type CmdOutput;
+
+    fn execute(self, cfg: &Config) -> Result<Self::CmdOutput> where Self: Sized {
         let mut db = RSSActionsDb::open(&cfg.db_path)?;
         let mut tx = db.transaction()?;
 
-        let result = match self {
-            RSSActionCmd::ListFeeds => RSSActionCmd::list_feeds(&tx),
-            RSSActionCmd::ListFilters => RSSActionCmd::list_filters(&tx),
-            RSSActionCmd::AddFeed(feed) => RSSActionCmd::add_feed(&tx, feed),
-            RSSActionCmd::AddFilter(filter) =>
-                RSSActionCmd::add_filter(&tx, filter),
-            RSSActionCmd::Update => RSSActionCmd::update(&mut tx),
-        };
+        let result = self.action(&mut tx);
 
         if result.is_ok() {
             tx.commit()?;
@@ -36,68 +25,50 @@ impl RSSActionCmd {
         result
     }
 
-    fn list_feeds(tx: &RSSActionsTx) -> Result<Vec<String>> {
-        let results = tx.fetch_feeds()?;
-       
-        if results.is_empty() {
-            return Ok(vec!["No feeds in database.".into()]);
-        }
+    fn action(self, tx: &mut RSSActionsTx) -> Result<Self::CmdOutput>;
+}
 
-        let mut output: Vec<String> = Vec::new();
-        output.push("Current feeds:".into());
-        output.push("".into());
+impl RSSActionCmd for ListFeedsCmd {
+    type CmdOutput = ListFeedsOutput;
+    fn action(self, tx: &mut RSSActionsTx) -> Result<ListFeedsOutput> {
+        let feeds = tx.fetch_feeds()?;
 
-        for feed in results {
-            output.push(format!("{}\t{}", feed.alias, feed.url));
-        }
-
-        Ok(output)
+        Ok(ListFeedsOutput { feeds })
     }
+}
 
-    fn add_feed(tx: &RSSActionsTx, feed: Feed) -> Result<Vec<String>> {
+impl RSSActionCmd for AddFeedCmd {
+    type CmdOutput = AddFeedOutput;
+    fn action(self, tx: &mut RSSActionsTx) -> Result<AddFeedOutput> {
+        let feed = self.0;
         tx.store_feed(&feed.alias, &feed.url)?;
-    
-        Ok(vec![format!("Successfully added feed {}", feed.alias)])
+
+        Ok(AddFeedOutput(feed))
     }
+}
 
-    fn list_filters(tx: &RSSActionsTx) -> Result<Vec<String>> {
-        let results = tx.fetch_filters()?;
+impl RSSActionCmd for ListFiltersCmd {
+    type CmdOutput = ListFiltersOutput;
+    fn action(self, tx: &mut RSSActionsTx) -> Result<ListFiltersOutput> {
+        let filters = tx.fetch_filters()?;
 
-        if results.is_empty() {
-            return Ok(vec!["No filters in database.".into()]);
-        }
-
-        let mut output: Vec<String> = Vec::new();
-        output.push("Current filters:".into());
-        output.push("".into());
-
-        for filter in results {
-            let last_updated = match filter.last_updated {
-                Some(utc_dt) => {
-                    let local_dt: DateTime<Local> = utc_dt.into();
-                    local_dt.to_string()
-                }
-                None => { "Never updated".into() }
-            };
-
-            let keywords = filter.keywords.join(", ");
-            let script = filter.script_path.file_name().map_or("".into(), |s| s.to_string_lossy());
-
-            output.push(format!("{}\t{}\t{}\t{}", filter.alias, keywords, script, last_updated));
-        }
-
-        Ok(output)
+        Ok(ListFiltersOutput { filters })
     }
+}
 
-    fn add_filter(tx: &RSSActionsTx, filter: Filter)
-         -> Result<Vec<String>> {
+impl RSSActionCmd for AddFilterCmd {
+    type CmdOutput = AddFilterOutput;
+    fn action(self, tx: &mut RSSActionsTx) -> Result<AddFilterOutput> {
+        let filter = self.0;
         tx.store_filter(&filter)?;
 
-        Ok(vec![format!("Successfully added filter on feed {}", filter.alias),
-                format!("Keywords: {}", filter.keywords.join(", "))])
+        Ok(AddFilterOutput(filter))
     }
+}
 
-    fn update(tx: &mut RSSActionsTx) -> Result<Vec<String>> {
+impl RSSActionCmd for UpdateCmd {
+    type CmdOutput = UpdateOutput;
+    fn action(self, tx: &mut RSSActionsTx) -> Result<UpdateOutput> {
         crate::update::update(tx)
     }
 }

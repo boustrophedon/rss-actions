@@ -8,6 +8,7 @@ use rss::Channel;
 
 use crate::{Feed, Filter};
 use crate::db::RSSActionsTx;
+use crate::UpdateOutput;
 
 static RSSACTIONS_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_NAME"),
@@ -52,26 +53,39 @@ impl FeedEntry {
     }
 }
 
-pub fn update(tx: &mut RSSActionsTx) -> Result<Vec<String>> {
+pub fn update(tx: &mut RSSActionsTx) -> Result<UpdateOutput> {
     // TODO instead of fetching all feeds and then all filters, could do join in db. maybe faster
     // maybe not, doesn't really matter to be honest.
     let feeds = tx.fetch_feeds()?;
     let filters = tx.fetch_filters()?;
     if filters.is_empty() {
-        return Ok(vec!["Nothing in database to update.".into()]);
+        return Ok(UpdateOutput {
+            executed_feeds: Vec::new(),
+            executed_filters: Vec::new(),
+            successes: 0,
+            failures: 0,
+            updates: 0,
+        });
     }
     let mut filters_map = join_feeds_and_filters(&feeds, filters);
 
-    let mut output = Vec::new();
-    let mut success = 0;
-    let mut updated = 0;
-    let mut failures = 0;
+    let mut output = UpdateOutput {
+        executed_feeds: Vec::new(),
+        executed_filters: Vec::new(),
+        successes: 0,
+        failures: 0,
+        updates: 0,
+    };
+
+    // Download feeds
 
     let download_results = download_feeds(feeds);
     // If all downloads resulted in an error, network is probably down.
     if download_results.iter().all(|(_, res)| res.is_err()) {
-        return Ok(vec!["All RSS feed downloads failed. Is the network down?".into()]);
+        return Err(anyhow!("All RSS feed downloads failed. Is the network down?"));
     }
+
+    // Parse relevant data from downloaded RSS feeds
 
     let mut feed_data = Vec::<(Feed, Vec<FeedEntry>)>::new();
     // Otherwise, report errors individually for each download and immediately fail all relevant
@@ -82,13 +96,14 @@ pub fn update(tx: &mut RSSActionsTx) -> Result<Vec<String>> {
 
             // If any entries are missing data, fail the whole feed
             // TODO: is this really the best idea? maybe just ignore the ones with missing data
-            // Also could report errors better
             if parsed_items_res.iter().any(|res| res.is_err()) {
                 if let Some(filters) = filters_map.remove(&feed.alias) {
-                    failures += filters.len();
-                    output.push(format!("{} entries in feed {} had data errors",
+                    output.failures += filters.len();
+                    output.executed_feeds.push(
+                        (feed.clone(),
+                        Err(anyhow!("{} entries in feed {} had data errors",
                             parsed_items_res.iter().filter(|res| res.is_err()).count(),
-                            &feed.alias));
+                            &feed.alias))));
                 }
                 continue;
             }
@@ -98,17 +113,22 @@ pub fn update(tx: &mut RSSActionsTx) -> Result<Vec<String>> {
                     .collect::<Vec<FeedEntry>>();
                 entries.sort_by_key(|entry| entry.pub_date);
 
+                output.executed_feeds.push((feed.clone(), Ok(())));
                 feed_data.push((feed, entries));
             }
         }
         else if let Err(err) = res {
             if let Some(filters) = filters_map.remove(&feed.alias) {
-                failures += filters.len();
-                //output.extend(format!("{:?}", err).split("\n").map(str::to_owned));
-                output.push(err.to_string());
+                output.failures += filters.len();
+                output.executed_feeds.push((feed.clone(), Err(err)));
+            }
+            else {
+                unreachable!("The feed for the channel was missing in the feeds-filters map.")
             }
         }
     }
+
+    // For each feed, for each filter, process the feed's entries with the filter
 
     for (feed, entries) in feed_data {
         let filters = match filters_map.get(&feed.alias) {
@@ -121,45 +141,27 @@ pub fn update(tx: &mut RSSActionsTx) -> Result<Vec<String>> {
         };
 
         let results = process_filters(filters, &entries);
-        for res in results {
+        for (filter, res) in results {
             if let Ok((updated_filter, was_updated, script_outputs)) = res {
-                let mut all_scripts_succeeded = true;
 
-                // TODO only output stdout with extra debug log level?
-                for (stdout, stderr, exit_status) in script_outputs {
-                    if !stdout.is_empty() {
-                        output.extend(stdout.split("\n").map(|s| s.into()));
-                    }
-                    if !stderr.is_empty() {
-                        output.push(format!("The script at {} output an error message during execution:",
-                                updated_filter.script_path.to_string_lossy()));
-                        output.push(stderr);
-                        all_scripts_succeeded = false;
-                    }
-                    if !exit_status.success() {
-                        all_scripts_succeeded = false;
-                    }
-                }
-                if was_updated { updated += 1; }
+                // Originally I was going to only update filters if the script executed
+                // successfully on all entries matched by the filter, but that would mean that if a
+                // scripted succeeded on one entry and failed on the next, every time update was
+                // run the script would be re-run on that entry, forcing scripts to be idempotent
+                // to work in all cases.
+                tx.update_filter(&updated_filter)?;
 
-                // only update filters if script executed successfully
-                if all_scripts_succeeded {
-                    tx.update_filter(&updated_filter)?;
-                    success += 1;
-                }
+                if was_updated { output.updates += 1; }
+                output.executed_filters.push((filter.clone(), Ok(script_outputs)));
+                output.successes += 1;
             }
             else if let Err(err) = res {
-                //output.extend(format!("{:?}", err).split("\n").map(str::to_owned));
-                output.push(err.to_string());
-                failures += 1;
+                output.executed_filters.push((filter.clone(), Err(err)));
+                output.failures += 1;
             }
         }
     }
 
-
-    output.push(format!("{} filters processed successfully.", success));
-    output.push(format!("{} filters updated.", updated));
-    output.push(format!("{} filters failed to process.", failures));
     Ok(output)
 }
 
@@ -167,10 +169,10 @@ pub fn update(tx: &mut RSSActionsTx) -> Result<Vec<String>> {
 /// `last_updated` time if the filters' script successfully finishes, whether the filter was
 /// actually updated, and the script's stdout and stderr.
 fn process_filters(filters: &[Filter], entries: &[FeedEntry])
-        -> Vec<Result<(Filter, bool, Vec<(String, String, ExitStatus)>)>> {
+        -> Vec<(Filter, Result<(Filter, bool, Vec<(String, String, ExitStatus)>)>)> {
 
     filters.iter().map(|filter| {
-       process_single_filter(filter, entries)
+        (filter.clone(), process_single_filter(filter, entries))
     })
     .collect()
 }

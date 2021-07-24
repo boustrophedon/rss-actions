@@ -1,20 +1,23 @@
 mod test_utils;
 use test_utils::*;
 
+use rss_actions::ListFeedsCmd;
+use rss_actions::RSSActionCmd;
+
 /// Displaying no feeds shows a "no feeds" message.
 #[test]
 fn display_no_feeds() {
     let (_dir, cfg) = temp_config();
 
-    let cmd = example_list_feeds();
+    let cmd = ListFeedsCmd;
 
     // execute list feeds command with no feeds in db
     let res = cmd.execute(&cfg);
     assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
     // assert message is "No feeds in database."
-    let message = res.unwrap();
-    assert_eq!(message, vec!["No feeds in database."]);
+    let output = res.unwrap();
+    assert!(output.feeds.is_empty());
 }
 
 /// Add one feed and display it
@@ -28,13 +31,15 @@ fn add_and_display_feed() {
     assert!(res.is_ok(), "Executing add feed command failed: {:?}", res.unwrap_err());
 
     // Execute list feeds command with 1 feed in db
-    let cmd = example_list_feeds();
+    let cmd = ListFeedsCmd;
     let res = cmd.execute(&cfg);
     assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
     // Check feed is listed
-    let message = res.unwrap();
-    assert_eq!(message, vec!["Current feeds:", "", "example_1\thttps://example.com/feed.rss"]);
+    let output = res.unwrap();
+    assert!(output.feeds.len() == 1);
+    assert_eq!(output.feeds[0].alias, "example_1");
+    assert_eq!(output.feeds[0].url.to_string(), "https://example.com/feed.rss");
 }
 
 /// Add multiple feeds and display them, based on addition order
@@ -53,13 +58,17 @@ fn add_and_display_feeds() {
     assert!(res.is_ok(), "Executing add feed command failed: {:?}", res.unwrap_err());
 
     // Execute list feeds command with 1 feed in db
-    let cmd = example_list_feeds();
+    let cmd = ListFeedsCmd;
     let res = cmd.execute(&cfg);
     assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
     // Check feed is listed
-    let message = res.unwrap();
-    assert_eq!(message, vec!["Current feeds:", "", "example_1\thttps://example.com/feed.rss", "example_2_org\thttps://example.org/feed2.rss"]);
+    let output = res.unwrap();
+    assert!(output.feeds.len() == 2);
+    assert_eq!(output.feeds[0].alias, "example_1");
+    assert_eq!(output.feeds[0].url.to_string(), "https://example.com/feed.rss");
+    assert_eq!(output.feeds[1].alias, "example_2_org");
+    assert_eq!(output.feeds[1].url.to_string(), "https://example.org/feed2.rss");
 }
 
 /// Add two of the same feed and get an error

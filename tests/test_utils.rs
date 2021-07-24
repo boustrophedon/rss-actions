@@ -9,6 +9,19 @@ use url::Url;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+
+/// This method just makes it easy to get the filename when testing, when we know the path is just
+/// going to be plain ascii.
+pub trait GetFileName {
+    fn get_file_name(&self) -> String;
+}
+impl GetFileName for PathBuf {
+    fn get_file_name(&self) -> String {
+        self.file_name().unwrap().to_string_lossy().to_string()
+    }
+}
+
+
 /// Create a test config with the database in a temporary directory. We return the TempDir because
 /// it is deleted when it is dropped.
 ///
@@ -40,48 +53,36 @@ pub fn temp_config() -> (TempDir, Config) {
 //// We could write these inline but if they need to change it's nice to uniformly have them behind
 //// convenience functions.
 
-pub fn example_list_feeds() -> RSSActionCmd {
-    RSSActionCmd::ListFeeds
-}
-
-pub fn example_list_filters() -> RSSActionCmd {
-    RSSActionCmd::ListFilters
-}
-
-pub fn example_update() -> RSSActionCmd {
-    RSSActionCmd::Update
-}
-
 //// Example Feeds
 
-pub fn example_add_feed1() -> RSSActionCmd {
-    RSSActionCmd::AddFeed(
+pub fn example_add_feed1() -> AddFeedCmd {
+    AddFeedCmd(
         Feed::new(url::Url::parse("https://example.com/feed.rss").unwrap(), "example_1").unwrap()
     )
 }
 
-pub fn example_add_feed2() -> RSSActionCmd {
-    RSSActionCmd::AddFeed(
+pub fn example_add_feed2() -> AddFeedCmd {
+    AddFeedCmd(
         Feed::new(url::Url::parse("https://example.org/feed2.rss").unwrap(), "example_2_org").unwrap()
     )
 }
 
 /// Add a feed with url pointing to a local server. The name doesn't actually matter and the URL
 /// doesn't have to be a local server, that's just what it's being used for.
-pub fn example_add_feed_local1(url: Url) -> RSSActionCmd {
-    RSSActionCmd::AddFeed(
+pub fn example_add_feed_local1(url: Url) -> AddFeedCmd {
+    AddFeedCmd(
         Feed::new(url, "local1").unwrap()
     )
 }
 
-pub fn example_add_feed_local2(url: Url) -> RSSActionCmd {
-    RSSActionCmd::AddFeed(
+pub fn example_add_feed_local2(url: Url) -> AddFeedCmd {
+    AddFeedCmd(
         Feed::new(url, "local2").unwrap()
     )
 }
 
-pub fn example_add_feed_local3(url: Url) -> RSSActionCmd {
-    RSSActionCmd::AddFeed(
+pub fn example_add_feed_local3(url: Url) -> AddFeedCmd {
+    AddFeedCmd(
         Feed::new(url, "local3").unwrap()
     )
 }
@@ -89,66 +90,66 @@ pub fn example_add_feed_local3(url: Url) -> RSSActionCmd {
 //// Example Filters
 
 /// Example filter with empty filter keywords
-pub fn example_add_filter_empty() -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter_empty() -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("example_1", vec![], example_script_path2()).unwrap()
     )
 }
 
-pub fn example_add_filter1() -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter1() -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("example_1", to_strings(vec!["test"]), example_script_path1()).unwrap()
     )
 }
 
 /// Same feed as filter1 but with different filter keywords
-pub fn example_add_filter2() -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter2() -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("example_1", to_strings(vec!["test", "other_keyword"]), example_script_path1()).unwrap()
     )
 }
 
 /// Same feed and keywords as filter1 but different script path
-pub fn example_add_filter3() -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter3() -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("example_1", to_strings(vec!["test"]), example_script_path2()).unwrap()
     )
 }
 
 /// filter with different feed than filters1,2,3
-pub fn example_add_filter4() -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter4() -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("example_2_org", to_strings(vec!["test", "other_keyword"]), example_script_path1()).unwrap()
     )
 }
 
 /// filter with non-existant feed
-pub fn example_add_filter_bad_feed_alias() -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter_bad_feed_alias() -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("example_nonexistant", to_strings(vec!["fake"]), example_script_path2()).unwrap()
     )
 }
 
 /// Same feed and filters and script path as filter 2 but with filters in different order
-pub fn example_add_filter_same_keywords_different_order() -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter_same_keywords_different_order() -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("example_1", to_strings(vec!["other_keyword", "test"]), example_script_path1()).unwrap()
     )
 }
 
 /// filters using local server feed alias 1,2,3
-pub fn example_add_filter_local1(strings: Vec<&str>, script_path: PathBuf) -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter_local1(strings: Vec<&str>, script_path: PathBuf) -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("local1", to_strings(strings), script_path).unwrap()
     )
 }
-pub fn example_add_filter_local2(strings: Vec<&str>, script_path: PathBuf) -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter_local2(strings: Vec<&str>, script_path: PathBuf) -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("local2", to_strings(strings), script_path).unwrap()
     )
 }
-pub fn example_add_filter_local3(strings: Vec<&str>, script_path: PathBuf) -> RSSActionCmd {
-    RSSActionCmd::AddFilter(
+pub fn example_add_filter_local3(strings: Vec<&str>, script_path: PathBuf) -> AddFilterCmd {
+    AddFilterCmd(
         Filter::new("local3", to_strings(strings), script_path).unwrap()
     )
 }

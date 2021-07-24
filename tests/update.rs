@@ -1,6 +1,9 @@
 mod test_utils;
 use test_utils::*;
 
+use rss_actions::{ListFiltersCmd, UpdateCmd};
+use rss_actions::{RSSActionCmd, ConsoleOutput};
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -13,9 +16,43 @@ use url::Url;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
+// TODO (actually need to do this): add
+// assert!(output.executed_feeds.iter().all(|res| res.is_ok()));
+// assert!(output.filters.iter().all(|res| res.is_ok()));
+// to all UpdateCmd output assertions (where appropriate, otherwise use iter::count and check err
+// messages)
+
 // TODO: use proptest to automate interleaving adding feeds and filters and checking updates
-// there are over 1000 lines of tests here and there are still missing cases (like adding a feed,
-// adding a filter, doing an update, adding a feed, doing an update, and then adding a filter
+// there are over 1000 lines of tests here and there are still missing cases.
+// eg adding a feed, adding a filter, doing an update, adding a feed, doing an update, and then
+// adding a filter. or when a script fails one run and then succeeds the next run, that the
+// filter's last_update is updated properly.
+
+// TODO: the *Cmd execute methods return a data object that has the results, which also implement a
+// trait for console output. originally they just returned the console output lines, which I then
+// tested against directly.
+//
+// When I replaced them with an intermediate data object, the tests for updates got nicer but the
+// tests for eg filter lists became more verbose but slightly clearer, and the asserts are more
+// precise.
+//
+// The asserts currently check each field of the returned objects directly, rather than creating
+// the objects (e.g. Filters) and checking for equality there. doing so would make the tests less
+// verbose, but also less clear since using values directly in the constructor is not very
+// enlightening
+// ```
+// let filter = Filter::new("local2", vec!["Example,"Entry], PathBuf::new("/bin/true"), timestamp1);
+// assert_eq(filter, output.filters[0]);
+// ```
+// and at the same time having a custom test method is also not very clear
+// `verify_filter(&filter, "local2", ["Example", "Entry"], true, timestamp1)`
+//
+// There's a section in either Kent Beck's TDD book or maybe Michael Feather's Working with Legacy
+// Code about how they had to do some (similar to what I'm currently doing at the time of writing)
+// annoying refactor and change a bunch of tests and they ended up just sitting down and doing the
+// changes. I kind of think there isn't necessarily a better option, and the lesson is that
+// changing existing APIs is annoying and you should try hard to get it right the first time. It's
+// annoying for your clients as well!
 
 
 // start a local warp server (per-test, in a new thread) on an unused port that serves example rss files and return
@@ -215,18 +252,18 @@ fn test_rss_dynamic_server() {
 fn update_empty_db_no_updates() {
     let (_dir, cfg) = temp_config();
 
-    let update_cmd = example_update();
+    let update_cmd = UpdateCmd;
     let res = update_cmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with empty database: {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap(), vec!["Nothing in database to update."]);
+    assert_eq!(res.unwrap().output(), vec!["Nothing in database to update."]);
 
     // Add a feed but no filter, still print "Nothing to update."
     let feed_cmd = example_add_feed1();
     feed_cmd.execute(&cfg).unwrap();
 
-    let res = example_update().execute(&cfg);
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with feed but no filter: {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap(), vec!["Nothing in database to update."]);
+    assert_eq!(res.unwrap().output(), vec!["Nothing in database to update."]);
 }
 
 /// Update with a filter that hasn't been updated and no matching keywords in feed has no matches
@@ -249,17 +286,26 @@ fn update_new_filter_but_no_matching_entries() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "0 filters updated.",
-        "0 filters failed to process."
-    ];
-    assert!(res.is_ok(), "Error running update with filter not matching any feed entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+    let res = UpdateCmd.execute(&cfg);
+    assert!(res.is_ok(), "Error running update: {}", res.unwrap_err());
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 0);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was not run by checking for no log file
     assert!(!log_path.exists(), "Script was run on non-matching filter: {}", std::fs::read_to_string(&log_path).unwrap());
+
+    // Check that filters are not updated
+    let res = ListFiltersCmd.execute(&cfg);
+    assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
+
+    let output = res.unwrap();
+    assert_eq!(output.filters.len(), 1);
+    assert!(output.filters[0].last_updated.is_none());
 }
 
 /// Test that with one un-updated filter, and a keyword-matching rss entry, the script is executed.
@@ -281,16 +327,16 @@ fn more_recent_entry_updates_filter() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with filter on matching entry: {}", res.unwrap_err());
 
     // Check that only one entry was matched
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
-    assert_eq!(res.unwrap(), expected_output);
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run once
     let script_output = std::fs::read_to_string(&log_path).unwrap();
@@ -299,6 +345,15 @@ fn more_recent_entry_updates_filter() {
     "url: http://www.example.com/blog/post/2",
     "rss action script end\n"].join("\n");
     assert_eq!(script_output, expected_output);
+
+    // Check that filter is updated in db
+    let res = ListFiltersCmd.execute(&cfg);
+    assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
+
+    let output = res.unwrap();
+    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    assert_eq!(output.filters.len(), 1);
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 }
 
 /// Make sure that when there are two new entries in a feed, the last_updated for that filter is the newest
@@ -321,16 +376,16 @@ fn two_matching_entries_updates_last_updated_to_newest() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with filter on matching entry: {}", res.unwrap_err());
 
     // Check that the output is correct
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
-    assert_eq!(res.unwrap(), expected_output);
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run twice, and older entry was processed first
     let script_output = std::fs::read_to_string(&log_path).unwrap();
@@ -344,18 +399,17 @@ fn two_matching_entries_updates_last_updated_to_newest() {
     "rss action script end\n"].join("\n");
     assert_eq!(script_output, expected_output);
 
-    // Check that the output of list filters has the correct last_updated date for the filter
-    let message = example_list_filters().execute(&cfg).unwrap();
+    // Check that filter is updated in db
+    let res = ListFiltersCmd.execute(&cfg);
+    assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
-    // our output is in the local timezone so we have to dynamically format
-    // TODO: figure out how to run tests with specified timezone for chrono
-    // or just add timezone option
-
-    let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
-
-    let filter_line = ["local1", "Example", "data_script.sh", &timestamp.to_string()].join("\t");
-    assert_eq!(message,
-        vec!["Current filters:", "", &filter_line]);
+    let output = res.unwrap();
+    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    assert_eq!(output.filters.len(), 1);
+    assert_eq!(output.filters[0].alias, "local1");
+    assert_eq!(output.filters[0].keywords, ["Example",]);
+    assert_eq!(output.filters[0].script_path.get_file_name(), "data_script.sh");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 }
 
 /// Test that with one updated filter, and a keyword-matching rss entry, the script is not
@@ -379,24 +433,26 @@ fn older_entry_does_not_update_filter() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with filter matching entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    // Check that the output is correct
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Execute update again and get no updates
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "0 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with filter matching entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 0);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run once
     let expected_output = vec!["rss action script start",
@@ -406,13 +462,17 @@ fn older_entry_does_not_update_filter() {
     let script_output = std::fs::read_to_string(&log_path).unwrap();
     assert_eq!(script_output, expected_output);
 
-    // Check that the output of list filters has the correct last_updated date for the filter
-    let message = example_list_filters().execute(&cfg).unwrap();
-    let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
+    // Check that filter is updated in db
+    let res = ListFiltersCmd.execute(&cfg);
+    assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
-    let filter_line = ["local1", "NYC, asthmatic, guestbook","data_script.sh", &timestamp.to_string()].join("\t");
-    assert_eq!(message,
-        vec!["Current filters:", "", &filter_line]);
+    let output = res.unwrap();
+    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    assert_eq!(output.filters.len(), 1);
+    assert_eq!(output.filters[0].alias, "local1");
+    assert_eq!(output.filters[0].keywords, ["NYC", "asthmatic", "guestbook"]);
+    assert_eq!(output.filters[0].script_path.get_file_name(), "data_script.sh");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 }
 
 /// If the feed has new items update is run, and we run update again, only the new items
@@ -434,14 +494,15 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with filter matching entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run 1 times via log
     let expected_output = vec!["rss action script start",
@@ -452,12 +513,14 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     assert_eq!(script_output, expected_output);
 
     // Check that the output of list filters has the correct last_updated date for the filter
-    let message = example_list_filters().execute(&cfg).unwrap();
-    let timestamp: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
+    let output = ListFiltersCmd.execute(&cfg).unwrap();
 
-    let filter_line = ["local1", "Item", "data_script.sh", &timestamp.to_string()].join("\t");
-    assert_eq!(message,
-        vec!["Current filters:", "", &filter_line]);
+    let timestamp = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+    assert_eq!(output.filters.len(), 1);
+    assert_eq!(output.filters[0].alias, "local1");
+    assert_eq!(output.filters[0].keywords, ["Item"]);
+    assert_eq!(output.filters[0].script_path.get_file_name(), "data_script.sh");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 
     // Now run update again and check that only new item was processed
 
@@ -467,14 +530,15 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     std::fs::remove_file(&log_path).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with filter matching entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run 1 time with the newer item
     let expected_output = vec!["rss action script start",
@@ -485,12 +549,13 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     assert_eq!(script_output, expected_output);
 
     // Check that the output of list filters has the correct last_updated date for the filter
-    let message = example_list_filters().execute(&cfg).unwrap();
-    let timestamp: DateTime<Local> = Utc.ymd(2000, 1, 2).and_hms(0, 0, 0).into();
-
-    let filter_line = ["local1", "Item", "data_script.sh", &timestamp.to_string()].join("\t");
-    assert_eq!(message,
-        vec!["Current filters:", "", &filter_line]);
+    let output = ListFiltersCmd.execute(&cfg).unwrap();
+    let timestamp = Utc.ymd(2000, 1, 2).and_hms(0, 0, 0);
+    assert_eq!(output.filters.len(), 1);
+    assert_eq!(output.filters[0].alias, "local1");
+    assert_eq!(output.filters[0].keywords, ["Item"]);
+    assert_eq!(output.filters[0].script_path.get_file_name(), "data_script.sh");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 }
 
 /// With two filters on two feeds, check that if one updates and the other doesn't, the
@@ -522,48 +587,75 @@ fn update_one_feed_new_and_one_not_updated() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filters
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "2 filters processed successfully.",
-        "2 filters updated.",
-        "0 filters failed to process."
-    ];
-    assert!(res.is_ok(), "Error running update with filter not matching any feed entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+    let res = UpdateCmd.execute(&cfg);
+    assert!(res.is_ok(), "Error running update: {}", res.unwrap_err());
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 2);
+    assert_eq!(output.updates, 2);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 2);
+    assert_eq!(output.executed_filters.len(), 2);
 
     // List filters and check that both updated
-    let message = example_list_filters().execute(&cfg).unwrap();
-    let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
-    let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
+    let output = ListFiltersCmd.execute(&cfg).unwrap();
+    let timestamp1 = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    let timestamp2 = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
 
-    let filter_line1 = ["local2", "Example, entry", "true", &timestamp1.to_string()].join("\t");
-    let filter_line2 = ["local1", "Item", "true", &timestamp2.to_string()].join("\t");
-    assert_eq!(message,
-        vec!["Current filters:", "", &filter_line1, &filter_line2]);
+    assert_eq!(output.filters.len(), 2);
+    assert_eq!(output.filters[0].alias, "local2");
+    assert_eq!(output.filters[0].keywords, ["Example", "entry"]);
+    assert_eq!(output.filters[0].script_path.get_file_name(), "true");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp1);
+    assert_eq!(output.filters[1].alias, "local1");
+    assert_eq!(output.filters[1].keywords, ["Item"]);
+    assert_eq!(output.filters[1].script_path.get_file_name(), "true");
+    assert_eq!(output.filters[1].last_updated.unwrap(), timestamp2);
 
     // Execute update again and see that only one filter was updated
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "2 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
-    assert!(res.is_ok(), "Error running update with filter not matching any feed entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+    let res = UpdateCmd.execute(&cfg);
+    assert!(res.is_ok(), "Error running update: {}", res.unwrap_err());
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 2);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 2);
+    assert_eq!(output.executed_filters.len(), 2);
 
     // List filters and check that 1 updated and 1 not updated
-    let message = example_list_filters().execute(&cfg).unwrap();
-    let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
-    let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 2).and_hms(0, 0, 0).into();
+    let output = ListFiltersCmd.execute(&cfg).unwrap();
+    let timestamp1 = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    let timestamp2 = Utc.ymd(2000, 1, 2).and_hms(0, 0, 0);
 
-    let filter_line1 = ["local2", "Example, entry", "true", &timestamp1.to_string()].join("\t");
-    let filter_line2 = ["local1", "Item", "true", &timestamp2.to_string()].join("\t");
-    assert_eq!(message,
-        vec!["Current filters:", "", &filter_line1, &filter_line2]);
+    assert_eq!(output.filters.len(), 2);
+    assert_eq!(output.filters[0].alias, "local2");
+    assert_eq!(output.filters[0].keywords, ["Example", "entry"]);
+    assert_eq!(output.filters[0].script_path.get_file_name(), "true");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp1);
+    assert_eq!(output.filters[1].alias, "local1");
+    assert_eq!(output.filters[1].keywords, ["Item"]);
+    assert_eq!(output.filters[1].script_path.get_file_name(), "true");
+    assert_eq!(output.filters[1].last_updated.unwrap(), timestamp2);
 }
 
 /// With three feeds and some filters each, check the correct updates are made and that
 /// list-filters lists the correct last_updated times.
+///
+/// TODO it's annoying and it would bloat the line count even further so i'm leaving these as
+/// testing the ConsoleOutput for the filters list output rather than checking each individually.
+///
+/// I should just write a function to take in the parameters and do the asserts but I don't really
+/// like the way that those kinds of tests look, e.g.:
+///
+/// `verify_filter(&filter, "local2", ["Example", "Entry"], true, timestamp1)`
+///
+/// but at the same time that's really not that different than
+///
+/// `
+/// let filter = Filter::new("local2", vec!["Example,"Entry], PathBuf::new("/bin/true"), timestamp1);
+/// assert_eq(filter, output.filters[0]);
+/// `
 #[test]
 fn update_multiple_filters_with_multiple_feeds() {
     let (dir, cfg) = temp_config();
@@ -612,14 +704,15 @@ fn update_multiple_filters_with_multiple_feeds() {
     // Update
     // feed 3 and feed 1 match and have updated time
 
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "4 filters processed successfully.",
-        "2 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Failed to execute update {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 4);
+    assert_eq!(output.updates, 2);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 3);
+    assert_eq!(output.executed_filters.len(), 4);
 
     let script_output = std::fs::read_to_string(&log_path).unwrap();
     assert!(script_output.matches("rss action script start").count() == 2, "script output:\n{}", script_output);
@@ -628,7 +721,7 @@ fn update_multiple_filters_with_multiple_feeds() {
 
     std::fs::remove_file(&log_path).unwrap();
 
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
     let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
 
@@ -636,25 +729,27 @@ fn update_multiple_filters_with_multiple_feeds() {
     let filter_line2 = ["local3", "0, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
     let filter_line3 = ["local1", "Example, xxx", "data_script.sh", "Never updated"].join("\t");
     let filter_line4 = ["local3", "2, Item", "data_script.sh", "Never updated"].join("\t");
-    assert_eq!(message,
+    assert_eq!(message.output(),
         vec!["Current filters:", "", &filter_line1, &filter_line2, &filter_line3, &filter_line4]);
     // Update
     // no updates
 
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "4 filters processed successfully.",
-        "0 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Failed to execute update {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 4);
+    assert_eq!(output.updates, 0);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 3);
+    assert_eq!(output.executed_filters.len(), 4);
+
 
     assert!(!log_path.exists(), "Script was run on filter with no updates: {}", std::fs::read_to_string(&log_path).unwrap());
     std::fs::remove_file(&log_path).unwrap_err(); // should be not found
 
     // same as previous, no updates
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
     let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
 
@@ -662,19 +757,20 @@ fn update_multiple_filters_with_multiple_feeds() {
     let filter_line2 = ["local3", "0, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
     let filter_line3 = ["local1", "Example, xxx", "data_script.sh", "Never updated"].join("\t");
     let filter_line4 = ["local3", "2, Item", "data_script.sh", "Never updated"].join("\t");
-    assert_eq!(message,
+    assert_eq!(message.output(),
         vec!["Current filters:", "", &filter_line1, &filter_line2, &filter_line3, &filter_line4]);
 
     // Update
     // Feed 3 match and has updated time
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "4 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Failed to execute update {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 4);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 3);
+    assert_eq!(output.executed_filters.len(), 4);
 
     let script_output = std::fs::read_to_string(&log_path).unwrap();
     assert_eq!(script_output.matches("rss action script start").count(), 1, "script output:\n{}", script_output);
@@ -684,7 +780,7 @@ fn update_multiple_filters_with_multiple_feeds() {
 
     // dynamic filter watching for the third entry is updated, static and dynamic watching for
     // second are not.
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
     let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 3).and_hms(0, 0, 0).into();
     let timestamp3: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
@@ -693,7 +789,7 @@ fn update_multiple_filters_with_multiple_feeds() {
     let filter_line2 = ["local3", "2, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
     let filter_line3 = ["local3", "0, Item", "data_script.sh", &timestamp3.to_string()].join("\t");
     let filter_line4 = ["local1", "Example, xxx", "data_script.sh", "Never updated"].join("\t");
-    assert_eq!(message,
+    assert_eq!(message.output(),
         vec!["Current filters:", "", &filter_line1, &filter_line2, &filter_line3, &filter_line4,]);
     // Add new filter
     // Update
@@ -703,7 +799,7 @@ fn update_multiple_filters_with_multiple_feeds() {
         .execute(&cfg).unwrap();
 
     // new filter is present and not updated
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
     let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 3).and_hms(0, 0, 0).into();
     let timestamp3: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
@@ -713,18 +809,19 @@ fn update_multiple_filters_with_multiple_feeds() {
     let filter_line3 = ["local3", "0, Item", "data_script.sh", &timestamp3.to_string()].join("\t");
     let filter_line4 = ["local1", "Example, xxx", "data_script.sh", "Never updated"].join("\t");
     let filter_line5 = ["local2", "interspersed", "data_script.sh", "Never updated"].join("\t");
-    assert_eq!(message,
+    assert_eq!(message.output(),
         vec!["Current filters:", "", &filter_line1, &filter_line2, &filter_line3, &filter_line4, &filter_line5]);
 
     // run update and only new filter is updated
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "5 filters processed successfully.",
-        "1 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Failed to execute update {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 5);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 3);
+    assert_eq!(output.executed_filters.len(), 5);
 
     let script_output = std::fs::read_to_string(&log_path).unwrap();
     assert_eq!(script_output.matches("rss action script start").count(), 2, "script output:\n{}", script_output);
@@ -736,40 +833,40 @@ fn update_multiple_filters_with_multiple_feeds() {
     std::fs::remove_file(&log_path).unwrap();
 
     // New filter is updated, old ones are not
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let filter_line1 = ["local1", "Example", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line2 = ["local2", "interspersed", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line3 = ["local3", "2, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
     let filter_line4 = ["local3", "0, Item", "data_script.sh", &timestamp3.to_string()].join("\t");
     let filter_line5 = ["local1", "Example, xxx", "data_script.sh", "Never updated"].join("\t");
     let expected = vec!["Current filters:", "", &filter_line1, &filter_line2, &filter_line3, &filter_line4, &filter_line5];
-    assert_eq!(message, expected,
-        "\n---output:\n{}\n\n\n---expected:\n{}", message.join("\n"), expected.join("\n"));
+    assert_eq!(message.output(), expected,
+        "\n---output:\n{}\n\n\n---expected:\n{}", message.output().join("\n"), expected.join("\n"));
     // Update
     // No matches
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "5 filters processed successfully.",
-        "0 filters updated.",
-        "0 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Failed to execute update {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+    let output = res.unwrap();
+    assert_eq!(output.successes, 5);
+    assert_eq!(output.updates, 0);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 3);
+    assert_eq!(output.executed_filters.len(), 5);
 
     // no log
     assert!(!log_path.exists(), "Script was run on filter with no updates: {}", std::fs::read_to_string(&log_path).unwrap());
     std::fs::remove_file(&log_path).unwrap_err(); // should be not found
 
     // same as previous
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let filter_line1 = ["local1", "Example", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line2 = ["local2", "interspersed", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line3 = ["local3", "2, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
     let filter_line4 = ["local3", "0, Item", "data_script.sh", &timestamp3.to_string()].join("\t");
     let filter_line5 = ["local1", "Example, xxx", "data_script.sh", "Never updated"].join("\t");
     let expected = vec!["Current filters:", "", &filter_line1, &filter_line2, &filter_line3, &filter_line4, &filter_line5];
-    assert_eq!(message, expected,
-        "\n---output:\n{}\n\n\n---expected:\n{}", message.join("\n"), expected.join("\n"));
+    assert_eq!(message.output(), expected,
+        "\n---output:\n{}\n\n\n---expected:\n{}", message.output().join("\n"), expected.join("\n"));
     // Update
 }
 
@@ -793,14 +890,15 @@ fn update_new_filter_with_partially_matching_entries() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "1 filters processed successfully.",
-        "0 filters updated.",
-        "0 filters failed to process."
-    ];
-    assert!(res.is_ok(), "Error running update with filter not matching any feed entries: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+    let res = UpdateCmd.execute(&cfg);
+    assert!(res.is_ok(), "Error running update: {}", res.unwrap_err());
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 0);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was not run by checking for no log file
     assert!(!log_path.exists(), "Script was run on non-matching filter: {}", std::fs::read_to_string(&log_path).unwrap());
@@ -835,15 +933,17 @@ fn update_with_one_feed_failing_succeeds() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        "Failed to download local1 rss feed from url http://169.254.0.1/doesNotExist.rss",
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "1 filters failed to process."
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with one failing server: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 1);
+    assert_eq!(output.executed_feeds.len(), 2);
+    assert_eq!(output.executed_filters.len(), 2);
+    assert_eq!(output.executed_feeds[0].1.as_ref().unwrap_err().to_string(),
+               "Failed to download local1 rss feed from url http://169.254.0.1/doesNotExist.rss");
 
     // Check that script was run once
     let expected_output = vec!["rss action script start",
@@ -854,12 +954,12 @@ fn update_with_one_feed_failing_succeeds() {
     assert_eq!(script_output, expected_output);
 
     // List filters and check that 1 updated and 1 not updated
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
 
     let filter_line1 = ["local2", "Example, entry", "data_script.sh", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "xxx", "data_script.sh", "Never updated"].join("\t");
-    assert_eq!(message,
+    assert_eq!(message.output(),
         vec!["Current filters:", "", &filter_line1, &filter_line2]);
 }
 
@@ -891,15 +991,18 @@ fn update_with_one_feed_bad_data_succeeds() {
 
 
     // Execute update with filter
-    let res = example_update().execute(&cfg);
-    let expected_output = vec![
-        format!("Could not parse local1 rss feed from url {}", bad_feed_url.to_string()),
-        "1 filters processed successfully.".into(),
-        "1 filters updated.".into(),
-        "1 filters failed to process.".into()
-    ];
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with one failing server: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let err_msg = format!("Could not parse local1 rss feed from url {}", bad_feed_url.to_string());
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 1);
+    assert_eq!(output.executed_feeds.len(), 2);
+    assert_eq!(output.executed_filters.len(), 1);
+    assert!(output.executed_feeds[0].1.as_ref().unwrap_err().to_string()
+        .contains(&err_msg));
 
     // Check that script was run once
     let expected_output = vec!["rss action script start",
@@ -910,12 +1013,12 @@ fn update_with_one_feed_bad_data_succeeds() {
     assert_eq!(script_output, expected_output);
 
     // List filters and check that 1 updated and 1 not updated
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
 
     let filter_line1 = ["local2", "Example, entry", "data_script.sh", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "xxx", "data_script.sh", "Never updated"].join("\t");
-    assert_eq!(message,
+    assert_eq!(message.output(),
         vec!["Current filters:", "", &filter_line1, &filter_line2]);
 }
 
@@ -942,15 +1045,15 @@ fn all_feeds_fail_download_network_message() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update and check for "network error" message
-    let res = example_update().execute(&cfg);
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with all servers failing: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), vec!["All RSS feed downloads failed. Is the network down?"]);
+    assert_eq!(res.unwrap().output(), vec!["All RSS feed downloads failed. Is the network down?"]);
 
     // List filters and check that it says not updated
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let filter_line1 = ["local1", "xxx", "false", "Never updated"].join("\t");
     let filter_line2 = ["local2", "Nothing", "false", "Never updated"].join("\t");
-    assert_eq!(message,
+    assert_eq!(message.output(),
         vec!["Current filters:", "", &filter_line1, &filter_line2]);
 }
 
@@ -982,15 +1085,17 @@ fn feed_with_missing_data_does_not_update_filter() {
 
 
     // Execute update with filter
-    let expected_output = vec![
-        "1 entries in feed local1 had data errors",
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "1 filters failed to process."
-    ];
-    let res = example_update().execute(&cfg);
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with one feed with missing data: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 1);
+    assert_eq!(output.executed_feeds.len(), 2);
+    assert_eq!(output.executed_filters.len(), 1);
+    assert_eq!(output.executed_feeds[0].1.as_ref().unwrap_err().to_string(),
+               "1 entries in feed local1 had data errors");
 
     // Check that script was run once
     let expected_output = vec!["rss action script start",
@@ -1001,17 +1106,17 @@ fn feed_with_missing_data_does_not_update_filter() {
     assert_eq!(script_output, expected_output);
 
     // List filters and check that it says not updated
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
 
     let filter_line1 = ["local2", "Example, entry", "data_script.sh", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "missing, pubdate", "data_script.sh", "Never updated"].join("\t");
-    assert_eq!(message, ["Current filters:", "", &filter_line1, &filter_line2]);
+    assert_eq!(message.output(), ["Current filters:", "", &filter_line1, &filter_line2]);
 }
 
 #[test]
 /// If a filter's script exits with a non-zero exit code, make sure the filter's last_updated is
-/// not changed, and no scripts are updated.
+/// not changed.
 fn feed_with_failing_script_does_not_update_filter() {
     let (_dir, cfg) = temp_config();
     let script_path = PathBuf::from("/bin/false");
@@ -1028,22 +1133,24 @@ fn feed_with_failing_script_does_not_update_filter() {
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter
-    let expected_output = vec![
-        "Script failed for filter on feed local1, keywords Example, entry, script /bin/false",
-        "1 filters processed successfully.",
-        "1 filters updated.",
-        "1 filters failed to process."
-    ];
-    let res = example_update().execute(&cfg);
+    let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with failing script: {}", res.unwrap_err());
-    assert_eq!(res.unwrap(), expected_output);
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 1);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 2);
+    assert_eq!(output.executed_filters[0].1.as_ref().unwrap_err().to_string(),
+            "Script failed for filter on feed local1, keywords Example, entry, script /bin/false");
 
 
     // List filters and check that it says not updated
-    let message = example_list_filters().execute(&cfg).unwrap();
+    let message = ListFiltersCmd.execute(&cfg).unwrap();
     let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
 
     let filter_line1 = ["local1", "entry", "true", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "Example, entry", "false", "Never updated"].join("\t");
-    assert_eq!(message, ["Current filters:", "", &filter_line1, &filter_line2]);
+    assert_eq!(message.output(), ["Current filters:", "", &filter_line1, &filter_line2]);
 }

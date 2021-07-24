@@ -22,10 +22,13 @@ fn test_config_database_sanity() {
     let cfg = Config::open(Some(cfg_path.as_path())).unwrap();
 
     // Read back example feed we wrote
-    let cmd = test_utils::example_list_feeds();
+    let cmd = ListFeedsCmd;
     let res = cmd.execute(&cfg);
     assert!(res.is_ok(), "Executing list feeds command failed: {}", res.unwrap_err());
 
     let output = res.unwrap();
-    assert_eq!(output, vec!["Current feeds:", "", "example_1\thttps://example.com/feed.rss"]);
+    println!("{:#?}", output);
+    assert!(output.feeds.len() == 1);
+    assert_eq!(output.feeds[0].alias, "example_1");
+    assert_eq!(output.feeds[0].url.to_string(), "https://example.com/feed.rss");
 }
