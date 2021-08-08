@@ -64,3 +64,6 @@ A corollary of this is that it doesn't make sense to "unit test" purely computat
 There are two dimensions that I've kind of mixed up here: testing aginst "real" vs "fake" data, and testing an api for "consistency" vs testing a method for "correctness". I feel that they're related somehow though, but at this point I kind of want to delete my rambling here and move it to a blog post.
 
 It seems like everyone has their own idea of what unit, integration, end-to-end, behavioral, etc. tests are, but this project helped me figure out what I *want* them to mean a little bit better. I'm still kind of confused though.
+
+
+So far the only bug that wasn't caught was that in my tests I was making a custom Config with a temporary database directory, and so I missed the case where the default directory (~/.local/share/rss-actions/) did not exist. This might have been caught by inspecting code coverage. In a previous project I had explicit tests for this that actually manipulated the $HOME environment variable and used a global lock so that the tests for it couldn't run in parallel (but the rest of the test suite could).

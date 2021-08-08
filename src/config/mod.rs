@@ -15,7 +15,8 @@ pub struct Config {
 
 impl Config {
     /// Creates a new config in the default directory, possibly creating the directory as well if
-    /// it does not exist.
+    /// it does not exist. Additionally creates the data directory in which the database is stored
+    /// in by default.
     ///
     /// The default directory `$XDG_CONFIG_DIR/rss-actions/config.toml` or equivalent on other
     /// platforms.
@@ -24,6 +25,8 @@ impl Config {
             .ok_or(Error::msg("No home directory exists. Could not find config directory."))?;
 
         let mut db_path: PathBuf = project_dirs.data_dir().into();
+        std::fs::create_dir_all(&db_path)
+            .with_context(|| format!("Unable to create database dir: {:?}", &db_path))?;
         db_path.push("rss-actions.db");
 
         let cfg = Config {
