@@ -1,3 +1,4 @@
+#!/bin/bash
 echo "$RSSACTIONS_ENTRY_TITLE"
 echo "$RSSACTIONS_ENTRY_URL"
 echo "$RSSACTIONS_ENTRY_DATE"

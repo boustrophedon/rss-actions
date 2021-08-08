@@ -111,6 +111,22 @@ impl ConsoleOutput for UpdateOutput {
         output.push(format!("{} filters updated.", self.updates));
         output.push(format!("{} filters failed to process.", self.failures));
 
+        let mut errors = Vec::new();
+        for (_, res) in &self.executed_feeds {
+            if let Err(err) = res {
+                //errors.push(err.to_string());
+                errors.push(format!("{:?}", err));
+            }
+        }
+        for (_, res) in &self.executed_filters {
+            if let Err(err) = res {
+                //errors.push(err.to_string());
+                errors.push(format!("{:?}", err));
+            }
+        }
+
+        output.extend(errors);
+
         output
     }
 }
