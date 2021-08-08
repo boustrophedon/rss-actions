@@ -1,6 +1,8 @@
 pub(crate) mod db;
 pub(crate) mod update;
 
+pub mod cli;
+
 pub mod models;
 pub use models::*;
 
