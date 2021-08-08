@@ -247,7 +247,7 @@ fn test_rss_dynamic_server() {
     assert_eq!(feed.items().len(), 3);
     }
 }
-/// Update with nothing in database prints "Nothing to update." as long as there are no filters.
+/// Update with nothing in database says there's nothing to update as long as there are no filters.
 #[test]
 fn update_empty_db_no_updates() {
     let (_dir, cfg) = temp_config();
@@ -255,7 +255,7 @@ fn update_empty_db_no_updates() {
     let update_cmd = UpdateCmd;
     let res = update_cmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with empty database: {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap().output(), vec!["Nothing in database to update."]);
+    assert_eq!(res.unwrap().output(), vec!["No filters in the database to update."]);
 
     // Add a feed but no filter, still print "Nothing to update."
     let feed_cmd = example_add_feed1();
@@ -263,7 +263,7 @@ fn update_empty_db_no_updates() {
 
     let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with feed but no filter: {:?}", res.unwrap_err());
-    assert_eq!(res.unwrap().output(), vec!["Nothing in database to update."]);
+    assert_eq!(res.unwrap().output(), vec!["No filters in the database to update."]);
 }
 
 /// Update with a filter that hasn't been updated and no matching keywords in feed has no matches

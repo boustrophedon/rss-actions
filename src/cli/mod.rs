@@ -54,6 +54,10 @@ enum SubArg {
     #[structopt(name = "list")]
     /// Display feeds or filters
     List(ListArg),
+
+    #[structopt(name = "update")]
+    /// Run update, downloading feeds and matching against filters, running scripts that match
+    Update,
 }
 
 // -- Add
@@ -140,6 +144,9 @@ impl RSSActionsArgs {
                     ListSubArg::Feeds => Box::new(crate::commands::ListFeedsCmd),
                     ListSubArg::Filters => Box::new(crate::commands::ListFiltersCmd),
                 }
+            },
+            SubArg::Update => {
+                Box::new(crate::commands::UpdateCmd)
             }
         };
 

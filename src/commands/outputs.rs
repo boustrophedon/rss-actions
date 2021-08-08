@@ -102,8 +102,8 @@ impl ConsoleOutput for AddFilterOutput {
 
 impl ConsoleOutput for UpdateOutput {
     fn output(&self) -> Vec<String> {
-        if self.successes == 0 && self.failures == 0 {
-            return vec!["Nothing in database to update.".into()];
+        if self.executed_filters.is_empty() {
+            return vec!["No filters in the database to update.".into()];
         }
         let mut output = Vec::new();
 
