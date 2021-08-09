@@ -40,7 +40,7 @@ impl<'conn> RSSActionsTx<'conn> {
     pub fn store_filter(&self, filter: &Filter) -> Result<()> {
         // Sort the filters list and then join with the "unit separator" ascii character into a
         // single string to serialize in the database.
-        let mut sorted_keywords: Vec<String> = filter.keywords.iter().cloned().collect();
+        let mut sorted_keywords: Vec<String> = filter.keywords.to_vec();
         sorted_keywords.sort();
 
         let keywords = sorted_keywords.join("\x1F");
@@ -57,8 +57,7 @@ impl<'conn> RSSActionsTx<'conn> {
         // TODO this is a hack but the alternative is to do another select and check explicitly
         // for each error message or perhaps check the rusqlite error type.
         // Add custom error messages for certain errors.
-        if res.is_err() {
-            let err = res.unwrap_err();
+        if let Err(err) = res {
             // Check whether the constraint failed via the feed id select
             if err.chain().any(|e| e.to_string() == "NOT NULL constraint failed: filters.feed_id") {
                 return Err(err).with_context(|| format!("Couldn't find a feed with alias {}.", filter.alias));
@@ -88,7 +87,7 @@ impl<'conn> RSSActionsTx<'conn> {
                 let (alias, keywords, script_path, last_updated): (String, String, String, Option<DateTime<Utc>>) =
                      res.context("Failed to read feed from db")?;
 
-                let keywords: Vec<String> = keywords.split("\x1F").map(|s| s.into()).collect();
+                let keywords: Vec<String> = keywords.split('\x1F').map(|s| s.into()).collect();
                 let script_path = PathBuf::from(script_path);
                 Ok(Filter {
                     alias,
@@ -104,7 +103,7 @@ impl<'conn> RSSActionsTx<'conn> {
     pub fn update_filter(&mut self, filter: &Filter) -> Result<()> {
         // Sort the filters list and then join with the "unit separator" ascii character into a
         // single string to serialize in the database.
-        let mut sorted_keywords: Vec<String> = filter.keywords.iter().cloned().collect();
+        let mut sorted_keywords: Vec<String> = filter.keywords.to_vec();
         sorted_keywords.sort();
 
         let sp = self.tx.savepoint()?;

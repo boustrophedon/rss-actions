@@ -29,7 +29,7 @@ pub trait RSSActionCLICmd {
 impl<T: RSSActionCmd> RSSActionCLICmd for T
     where <T as RSSActionCmd>::CmdOutput: ConsoleOutput {
     fn execute_console(&self, cfg: &Config) -> Result<Vec<String>> {
-        let output = self.execute(&cfg)?;
+        let output = self.execute(cfg)?;
         Ok(ConsoleOutput::output(&output))
     }
 }

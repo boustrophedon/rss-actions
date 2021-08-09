@@ -1,9 +1,8 @@
 use anyhow::Result;
 use chrono::*;
 
-use std::process::ExitStatus;
-
 use crate::{Feed, Filter};
+use crate::update::ProcessOutput; // (String, String, ExitStatus)
 
 #[derive(Debug)]
 pub struct ListFeedsOutput {
@@ -27,7 +26,7 @@ pub struct UpdateOutput {
     pub executed_feeds: Vec<(Feed, Result<()>)>,
     /// Filters with scripts that fail to execute on at least one of the feed's entries are
     /// reported with Errors.
-    pub executed_filters: Vec<(Filter, Result<Vec<(String, String, ExitStatus)>>)>,
+    pub executed_filters: Vec<(Filter, Result<Vec<ProcessOutput>>)>,
     pub successes: usize,
     pub failures: usize,
     pub updates: usize,
@@ -45,9 +44,9 @@ impl ConsoleOutput for ListFeedsOutput {
             return vec!["No feeds in database.".into()];
         }
 
-        let mut output: Vec<String> = Vec::new();
-        output.push("Current feeds:".into());
-        output.push("".into());
+        let mut output: Vec<String> = vec![
+        "Current feeds:".into(),
+        "".into()];
 
         for feed in feeds {
             output.push(format!("{}\t{}", feed.alias, feed.url));
@@ -63,9 +62,9 @@ impl ConsoleOutput for ListFiltersOutput {
             return vec!["No filters in database.".into()];
         }
 
-        let mut output: Vec<String> = Vec::new();
-        output.push("Current filters:".into());
-        output.push("".into());
+        let mut output: Vec<String> = vec![
+            "Current filters:".into(),
+            "".into()];
 
         for filter in &self.filters {
             let last_updated = match filter.last_updated {

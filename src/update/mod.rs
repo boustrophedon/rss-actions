@@ -10,6 +10,9 @@ use crate::{Feed, Filter};
 use crate::db::RSSActionsTx;
 use crate::UpdateOutput;
 
+/// Stdout, Stderr, ExitStatus
+pub type ProcessOutput = (String, String, ExitStatus);
+
 static RSSACTIONS_USER_AGENT: &str = concat!(
     env!("CARGO_PKG_NAME"),
     "/",
@@ -39,9 +42,9 @@ impl FeedEntry {
 
         let pub_date = entry.pub_date.as_ref().unwrap();
         let pub_date_res = DateTime::parse_from_rfc2822(&*pub_date);
-        if pub_date_res.is_err() {
-            return Err(anyhow::Error::new(pub_date_res.unwrap_err())
-                .context("Entry pub date did not parse correctly."));
+        if let Err(err) = pub_date_res {
+            return Err(err)
+                .context("Entry pub date did not parse correctly.");
         }
         let pub_date = pub_date_res.unwrap().into();
 
@@ -169,7 +172,7 @@ pub fn update(tx: &mut RSSActionsTx) -> Result<UpdateOutput> {
 /// `last_updated` time if the filters' script successfully finishes, whether the filter was
 /// actually updated, and the script's stdout and stderr.
 fn process_filters(filters: &[Filter], entries: &[FeedEntry])
-        -> Vec<(Filter, Result<(Filter, bool, Vec<(String, String, ExitStatus)>)>)> {
+        -> Vec<(Filter, Result<(Filter, bool, Vec<ProcessOutput>)>)> {
 
     filters.iter().map(|filter| {
         (filter.clone(), process_single_filter(filter, entries))
@@ -183,7 +186,7 @@ fn process_filters(filters: &[Filter], entries: &[FeedEntry])
 /// Currently the entire filter fails if the script fails on a single entry. This is because it's
 /// easier but also because if we updated the filter's last_updated field there would be no way to
 /// retry failed entries.
-fn process_single_filter(filter: &Filter, entries: &[FeedEntry]) -> Result<(Filter, bool, Vec<(String, String, ExitStatus)>)> {
+fn process_single_filter(filter: &Filter, entries: &[FeedEntry]) -> Result<(Filter, bool, Vec<ProcessOutput>)> {
     // TODO: for each entry
     // if entry matches and is newer than last
     // set most_recent_updated
@@ -193,14 +196,14 @@ fn process_single_filter(filter: &Filter, entries: &[FeedEntry]) -> Result<(Filt
     // The entries must be sorted by pub date for the most_recent_updated to be computed properly.
     assert!(entries.windows(2).all(|s| s[0].pub_date < s[1].pub_date));
 
-    let mut most_recent_updated = filter.last_updated.clone();
+    let mut most_recent_updated = filter.last_updated;
     let mut script_outputs = Vec::new();
     for entry in entries {
         if filter.matches_keywords(&entry.title) &&
                 (filter.last_updated.is_none() || filter.last_updated.unwrap() < entry.pub_date) {
             most_recent_updated = Some(entry.pub_date);
 
-            let script_output = run_script(&filter, &entry)
+            let script_output = run_script(filter, entry)
                 .with_context(|| format!("Script failed for filter on feed {}, keywords {}, script {}",
                         filter.alias, filter.keywords.join(", "), filter.script_path.to_string_lossy()))?;
             script_outputs.push(script_output);

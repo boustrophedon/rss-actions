@@ -22,7 +22,7 @@ impl Config {
     /// platforms.
     pub fn make_new() -> Result<Config> {
         let project_dirs = ProjectDirs::from("", "", "rss-actions")
-            .ok_or(Error::msg("No home directory exists. Could not find config directory."))?;
+            .ok_or_else(|| Error::msg("No home directory exists. Could not find config directory."))?;
 
         let mut db_path: PathBuf = project_dirs.data_dir().into();
         std::fs::create_dir_all(&db_path)
@@ -49,7 +49,7 @@ impl Config {
             return Err(anyhow!("File path {:?} is existing directory, not file.", config_file));
         }
         let config_dir = config_file.parent()
-            .ok_or(anyhow!("We should not hit this, but somehow couldn't get parent directory of \
+            .ok_or_else(|| anyhow!("We should not hit this, but somehow couldn't get parent directory of \
                             non-directory {:?}", config_file))?;
 
         std::fs::create_dir_all(config_dir)

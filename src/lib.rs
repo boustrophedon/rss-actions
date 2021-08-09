@@ -1,3 +1,5 @@
+#![allow(clippy::needless_return)]
+
 pub(crate) mod db;
 pub(crate) mod update;
 
