@@ -941,7 +941,7 @@ fn update_with_one_feed_failing_succeeds() {
     assert_eq!(output.updates, 1);
     assert_eq!(output.failures, 1);
     assert_eq!(output.executed_feeds.len(), 2);
-    assert_eq!(output.executed_filters.len(), 2);
+    assert_eq!(output.executed_filters.len(), 1);
     assert_eq!(output.executed_feeds[0].1.as_ref().unwrap_err().to_string(),
                "Failed to download local1 rss feed from url http://169.254.0.1/doesNotExist.rss");
 
@@ -1046,8 +1046,9 @@ fn all_feeds_fail_download_network_message() {
 
     // Execute update and check for "network error" message
     let res = UpdateCmd.execute(&cfg);
-    assert!(res.is_ok(), "Error running update with all servers failing: {}", res.unwrap_err());
-    assert_eq!(res.unwrap().output(), vec!["All RSS feed downloads failed. Is the network down?"]);
+    assert!(res.is_err(), "Update succeeded with all servers failing: {:?}", res.unwrap());
+    assert_eq!(res.unwrap_err().to_string(),
+        "All RSS feed downloads failed. Is the network down?");
 
     // List filters and check that it says not updated
     let message = ListFiltersCmd.execute(&cfg).unwrap();
