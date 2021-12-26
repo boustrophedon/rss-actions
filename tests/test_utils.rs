@@ -123,6 +123,14 @@ pub fn example_add_filter4() -> AddFilterCmd {
     )
 }
 
+/// Same feed1 different keywords
+pub fn example_add_filter5() -> AddFilterCmd {
+    AddFilterCmd(
+        Filter::new("example_1", to_strings(vec!["uwu", "keyword"]), example_script_path2()).unwrap()
+    )
+}
+
+
 /// filter with non-existant feed
 pub fn example_add_filter_bad_feed_alias() -> AddFilterCmd {
     AddFilterCmd(
@@ -152,6 +160,29 @@ pub fn example_add_filter_local3(strings: Vec<&str>, script_path: PathBuf) -> Ad
     AddFilterCmd(
         Filter::new("local3", to_strings(strings), script_path).unwrap()
     )
+}
+
+//// Delete filter example
+
+/// remove filter from `example_add_filter1()`
+pub fn example_delete_filter1() -> DeleteFilterCmd {
+    DeleteFilterCmd("example_1".into(), to_strings(vec!["test"]))
+}
+
+/// remove filter from `example_add_filter2()`
+pub fn example_delete_filter2() -> DeleteFilterCmd {
+    DeleteFilterCmd("example_1".into(), to_strings(vec!["test", "other_keyword"]))
+}
+
+// NOTE: no filter3 because it's the same as filter2 with a different script path
+
+/// remove filter from `example_add_filter4()`.
+pub fn example_delete_filter4() -> DeleteFilterCmd {
+    DeleteFilterCmd("example_2_org".into(), to_strings(vec!["test", "other_keyword"]))
+}
+
+pub fn example_delete_filter_bad_feed_alias() -> DeleteFilterCmd {
+    DeleteFilterCmd("example_nonexistant".into(), to_strings(vec!["fake"]))
 }
 
 //// Utility functions

@@ -74,3 +74,14 @@ impl RSSActionCmd for UpdateCmd {
         crate::update::update(tx)
     }
 }
+
+impl RSSActionCmd for DeleteFilterCmd {
+    type CmdOutput = DeleteFilterOutput;
+    fn action(&self, tx: &mut RSSActionsTx) -> Result<DeleteFilterOutput> {
+        let alias = &self.0;
+        let keywords = &self.1;
+        tx.delete_filter(&alias, &keywords)?;
+
+        Ok(DeleteFilterOutput(alias.clone(), keywords.clone()))
+    }
+}

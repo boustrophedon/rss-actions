@@ -558,6 +558,55 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 }
 
+#[test]
+fn update_filter_with_empty_keywords_matches_all_entries() {
+    let (dir, cfg) = temp_config();
+    let (script_path, log_path) = temp_log_data_script(dir.path());
+
+    // set up test-specific server to serve rss feeds dynamically
+    let base_url = run_rss_dynamic_server();
+    let feed_url = base_url.join("updates_every_access.rss").unwrap();
+
+    // Add feed and filter
+    let feed_cmd = example_add_feed_local1(feed_url.clone());
+    feed_cmd.execute(&cfg).unwrap();
+
+    let filter_cmd = example_add_filter_local1(vec![], script_path);
+    filter_cmd.execute(&cfg).unwrap();
+
+    // Request the page 9 times to create 9 entries
+    for _ in 0..9 {
+        let res = reqwest::blocking::get(feed_url.clone());
+        assert!(res.is_ok(), "request to test server failed");
+    }
+
+    // Execute update with filter to make the 10th request/feed entry in total
+    let res = UpdateCmd.execute(&cfg);
+    assert!(res.is_ok(), "Error running update with filter matching entries: {}", res.unwrap_err());
+
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
+
+    // Check that script was run 10 times via log
+    let script_output = std::fs::read_to_string(&log_path).unwrap();
+    assert_eq!(script_output.matches("start").count(), 10);
+    assert_eq!(script_output.matches("end").count(), 10);
+
+    // Check that the output of list filters has the correct last_updated date for the filter
+    let output = ListFiltersCmd.execute(&cfg).unwrap();
+
+    let timestamp = Utc.ymd(2000, 1, 10).and_hms(0, 0, 0);
+    assert_eq!(output.filters.len(), 1);
+    assert_eq!(output.filters[0].alias, "local1");
+    assert_eq!(output.filters[0].keywords, Vec::<String>::new());
+    assert_eq!(output.filters[0].script_path.get_file_name(), "data_script.sh");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
+}
+
 /// With two filters on two feeds, check that if one updates and the other doesn't, the
 /// last_updated times are correct.
 #[test]

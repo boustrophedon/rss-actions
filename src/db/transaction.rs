@@ -9,6 +9,28 @@ use crate::db::{RSSActionsTx};
 use crate::models::Feed;
 use crate::models::Filter;
 
+struct FilterId(pub usize);
+
+/// Sort the filters list and then join with two "unit separator" (code 1F) ascii characters into a
+/// single string to serialize in the database.
+fn encode_filter_keywords(keywords: &[String]) -> String {
+    let mut sorted_keywords: Vec<String> = keywords.to_vec();
+    sorted_keywords.sort();
+
+    sorted_keywords.into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\x1F")
+}
+
+/// Deserialize from `encode_filter_keywords`.
+fn decode_filter_keywords(keywords_packed: &str) -> Vec<String> {
+    keywords_packed
+        .split('\x1F')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.into()).collect()
+}
+
 
 impl<'conn> RSSActionsTx<'conn> {
     pub fn store_feed(&self, alias: &str, url: &Url) -> Result<()> {
@@ -38,12 +60,8 @@ impl<'conn> RSSActionsTx<'conn> {
     }
 
     pub fn store_filter(&self, filter: &Filter) -> Result<()> {
-        // Sort the filters list and then join with the "unit separator" ascii character into a
-        // single string to serialize in the database.
-        let mut sorted_keywords: Vec<String> = filter.keywords.to_vec();
-        sorted_keywords.sort();
+        let keywords = encode_filter_keywords(&filter.keywords);
 
-        let keywords = sorted_keywords.join("\x1F");
         let res = self.tx.execute(
             "INSERT INTO filters
              (feed_id, keywords, script_path, last_updated) VALUES
@@ -74,40 +92,42 @@ impl<'conn> RSSActionsTx<'conn> {
     }
 
     pub fn fetch_filters(&self) -> Result<Vec<Filter>> {
+        Ok(self.fetch_filters_with_ids()?
+            .into_iter().map(|(_db_id, filter)| filter)
+            .collect())
+    }
+
+    fn fetch_filters_with_ids(&self) -> Result<Vec<(FilterId, Filter)>> {
         let mut stmt = self.tx.prepare(
-            "SELECT feeds.alias, filters.keywords, filters.script_path, filters.last_updated
+            "SELECT filters.id, feeds.alias, filters.keywords, filters.script_path, filters.last_updated
              FROM filters
              LEFT JOIN feeds
              ON filters.feed_id = feeds.id
              ORDER BY filters.last_updated DESC")?;
 
-        return stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+        return stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)))
             .context("Failed to fetch filters from db")?
             .map(|res| {
-                let (alias, keywords, script_path, last_updated): (String, String, String, Option<DateTime<Utc>>) =
+                let (filter_id, alias, keywords, script_path, last_updated): (usize, String, String, String, Option<DateTime<Utc>>) =
                      res.context("Failed to read feed from db")?;
 
-                let keywords: Vec<String> = keywords.split('\x1F').map(|s| s.into()).collect();
+                let keywords = decode_filter_keywords(&keywords);
                 let script_path = PathBuf::from(script_path);
-                Ok(Filter {
+                Ok((FilterId(filter_id), Filter {
                     alias,
                     keywords,
                     script_path,
                     last_updated
-                })
+                }))
             }).collect();
 
     }
 
     /// Update filter last_updated keyed on alias, keywords, and script path
     pub fn update_filter(&mut self, filter: &Filter) -> Result<()> {
-        // Sort the filters list and then join with the "unit separator" ascii character into a
-        // single string to serialize in the database.
-        let mut sorted_keywords: Vec<String> = filter.keywords.to_vec();
-        sorted_keywords.sort();
+        let keywords = encode_filter_keywords(&filter.keywords);
 
         let sp = self.tx.savepoint()?;
-        let keywords = sorted_keywords.join("\x1F");
         let res = sp.execute(
             "UPDATE filters
             SET last_updated = :last_updated
@@ -140,5 +160,59 @@ impl<'conn> RSSActionsTx<'conn> {
         sp.commit()
             .with_context(|| format!("Failed to commit subtransaction savepoint updating filter {:?}", filter))?;
         return res.map(|_| ());
+    }
+
+    // TODO return the filter deleted as read from the database.
+    // TODO check whether the feed exists and return a different error in that case
+    pub fn delete_filter(&mut self, alias: &str, keywords: &[String]) -> Result<()> {
+        let filters = self.fetch_filters_with_ids()?;
+
+        // NOTE: originally I wanted to do this in the db with a `LIKE %XkeyX%XwordX%` kind of
+        // query but that doesn't work because you can't put a % in a parameter and have it act as
+        // a wildcard (because then users could insert them). So the options are either insert the
+        // parameter into the query string with normal string formatting and enable sql injections
+        // or do it like this.
+        //
+        // Another option is generating the query string with a bunch of
+        // ```
+        // keywords LIKE %Xkeyword1X%
+        // OR keywords LIKE %Xkeyword2X%
+        // OR ...
+        // ```
+        //
+        // but that's more complicated and error-prone and it's a wash whether it's actually faster
+        // to do that (it probably is but you'd want to measure at that point).
+
+        let mut matching_filters = Vec::new();
+        for (id, filter) in filters {
+            // all user-given keywords are in the filter we're checking
+            let all_keywords_match = keywords.iter().all(|k| filter.keywords.contains(k));
+
+            if filter.alias == alias && all_keywords_match {
+                matching_filters.push((id, filter));
+            }
+        }
+
+        if matching_filters.len() == 0 {
+            return Err(anyhow!("No filters matching `{}` on the feed `{}` were found in the database.",
+                    &keywords.join(","), &alias));
+        }
+        else if matching_filters.len() > 1 {
+            return Err(anyhow!("Multiple filters matching `{}` on the feed `{}` were found in the database.",
+                    &keywords.join(","), &alias));
+        }
+
+        let single_matching_filter = matching_filters.pop().expect("checked for 0 and >1");
+
+        self.tx.execute(
+            "DELETE FROM filters
+            WHERE
+                id = :filter_id",
+            named_params!{":filter_id": &single_matching_filter.0.0})
+            // .with_context(|| format!("Failed to filter alias {} keywords {:?}",
+            //         &alias, &keywords));
+            .with_context(|| format!("A database error occurred deleting filter with keywords {:?} on feed {}",
+                    &keywords, &alias))
+            .map(|_| ())
     }
 }
