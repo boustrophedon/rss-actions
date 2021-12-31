@@ -5,8 +5,6 @@ use crate::db::RSSActionsTx;
 impl<'conn> RSSActionsTx<'conn> {
     /// Create the tables of the database.
     pub fn create_tables(&self) -> Result<()> {
-        self.tx.execute("PRAGMA foreign_keys = ON;", [])
-            .context("failed to enable foreign keys pragma")?;
         self.tx.execute(
             "CREATE TABLE feeds (
                 id INTEGER PRIMARY KEY,

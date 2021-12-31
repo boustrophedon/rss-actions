@@ -24,6 +24,9 @@ pub struct AddFilterOutput(pub Filter);
 pub struct DeleteFilterOutput(pub String, pub Vec<String>);
 
 #[derive(Debug)]
+pub struct DeleteFeedOutput(pub String);
+
+#[derive(Debug)]
 pub struct UpdateOutput {
     /// Feeds that fail to download or parse have their filters skipped but are reported with Errors.
     pub executed_feeds: Vec<(Feed, Result<()>)>,
@@ -139,5 +142,12 @@ impl ConsoleOutput for DeleteFilterOutput {
         let keywords = &self.1;
         vec![format!("Successfully deleted filter on feed {}", alias),
              format!("Keywords: {}", keywords.join(", "))]
+    }
+}
+
+impl ConsoleOutput for DeleteFeedOutput {
+    fn output(&self) -> Vec<String> {
+        let alias = &self.0;
+        vec![format!("Successfully deleted feed {}", alias)]
     }
 }

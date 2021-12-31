@@ -85,3 +85,13 @@ impl RSSActionCmd for DeleteFilterCmd {
         Ok(DeleteFilterOutput(alias.clone(), keywords.clone()))
     }
 }
+
+impl RSSActionCmd for DeleteFeedCmd {
+    type CmdOutput = DeleteFeedOutput;
+    fn action(&self, tx: &mut RSSActionsTx) -> Result<DeleteFeedOutput> {
+        let alias = &self.0;
+        tx.delete_feed(&alias)?;
+
+        Ok(DeleteFeedOutput(alias.clone()))
+    }
+}

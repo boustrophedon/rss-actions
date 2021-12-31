@@ -215,4 +215,34 @@ impl<'conn> RSSActionsTx<'conn> {
                     &keywords, &alias))
             .map(|_| ())
     }
+
+    pub fn delete_feed(&mut self, alias: &str) -> Result<()> {
+        self.tx.pragma_update(None, "foreign_keys", &true)
+            .context("failed to enable foreign keys pragma")?;
+        let res = self.tx.execute(
+            "DELETE FROM feeds
+            WHERE
+                alias = :alias",
+            named_params!{":alias": &alias,})
+            .with_context(|| format!("Failed to delete feed {} in db",
+                    &alias));
+
+        // Add custom error messages for certain errors.
+        match res {
+            Ok(count) => {
+                if count == 0 {
+                    return Err(anyhow!("No feed was found to delete that matches name `{}`", alias));
+                }
+                else if count > 1 {
+                    return Err(anyhow!("More than one feed was found when trying to delete `{}`", alias));
+                }
+            }
+            Err(err) => {
+                return Err(err)
+                    .with_context(|| format!("A database error occurred deleting feed `{}`", alias));
+            }
+        }
+
+        Ok(())
+    }
 }
