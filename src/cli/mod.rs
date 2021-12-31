@@ -51,6 +51,10 @@ enum SubArg {
     /// Add a feed or filter to the database
     Add(AddArg),
 
+    #[structopt(name = "delete")]
+    /// Add a feed or filter to the database
+    Delete(DeleteArg),
+
     #[structopt(name = "list")]
     /// Display feeds or filters
     List(ListArg),
@@ -98,6 +102,41 @@ struct AddFilter {
     pub keywords: Vec<String>,
 }
 
+// -- Delete
+
+#[derive(Debug, StructOpt)]
+struct DeleteArg {
+    /// Delete a feed or filter from the database.
+    #[structopt(subcommand)]
+    pub cmd: DeleteSubArg,
+}
+
+#[derive(Debug, StructOpt)]
+enum DeleteSubArg {
+    // #[structopt(name = "feed")]
+    // /// Remove a feed from the database
+    // Feed(DeleteFeed),
+
+    #[structopt(name = "filter")]
+    /// Remove a filter from the database
+    Filter(DeleteFilter)
+}
+
+// #[derive(Debug, StructOpt)]
+// struct DeleteFeed {
+//     /// The name used to refer to the feed to be deleted
+//     pub alias: String,
+// }
+
+#[derive(Debug, StructOpt)]
+struct DeleteFilter {
+    /// The alias of the feed the filter to be deleted is on
+    pub alias: String,
+    /// The keywords to filter the entries with. Not all keywords from the filter need to be
+    /// present, but enough to uniquely identify the filter are required.
+    pub keywords: Vec<String>,
+}
+
 // -- List args
 //
 #[derive(Debug, StructOpt)]
@@ -136,6 +175,17 @@ impl RSSActionsArgs {
                         let path = PathBuf::from(filter_args.script_path);
                         let filter = Filter::new(&filter_args.alias, filter_args.keywords, path)?;
                         Box::new(crate::commands::AddFilterCmd(filter))
+                    }
+                }
+            }
+            SubArg::Delete(delete_args) => {
+                match delete_args.cmd {
+                    // DeleteSubArg::Feed(feed_args) => {
+                    //     unimplemented!()
+                    //     // Box::new(crate::commands::DeleteFilterCmd(feed_args.alias))
+                    // },
+                    DeleteSubArg::Filter(filter_args) => {
+                        Box::new(crate::commands::DeleteFilterCmd(filter_args.alias, filter_args.keywords))
                     }
                 }
             }
