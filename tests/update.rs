@@ -323,7 +323,10 @@ fn more_recent_entry_updates_filter() {
     let feed_cmd = example_add_feed_local1(feed_url);
     feed_cmd.execute(&cfg).unwrap();
 
-    let filter_cmd = example_add_filter_local1(vec!["asthmatic", "NYC", "guestbook"], script_path);
+    // NOTE: nyc is lowercase here, checking that keywords are matched even if case isn't the same
+    // I completely forgot to do that even with 1000+ lines of tests. this is the only place that
+    // tests it currently.
+    let filter_cmd = example_add_filter_local1(vec!["asthmatic", "nyc", "guestbook"], script_path);
     filter_cmd.execute(&cfg).unwrap();
 
     // Execute update with filter

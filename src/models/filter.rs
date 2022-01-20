@@ -55,6 +55,7 @@ impl Filter {
     }
 
     pub fn matches_keywords(&self, s: &str) -> bool {
-        self.keywords.iter().all(|w| s.contains(w))
+        let lower_s = s.to_ascii_lowercase();
+        self.keywords.iter().all(|w| lower_s.contains(&w.to_ascii_lowercase()))
     }
 }
