@@ -1,0 +1,9 @@
+[Unit]
+Description=Update rss-actions database and run actions
+
+[Service]
+# Could include more restrictive directives, but depends partially on what your scripts do.
+NoNewPrivileges=yes
+RestrictNamespaces=yes
+Type=oneshot
+ExecStart=/path/to/rss-actions update
