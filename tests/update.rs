@@ -415,6 +415,62 @@ fn two_matching_entries_updates_last_updated_to_newest() {
     assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 }
 
+/// Test that with two new entries with the same pubdate, both entries count towards updated
+#[test]
+fn two_new_entries_same_pubdate_succeed() {
+    let (dir, cfg) = temp_config();
+    let (script_path, log_path) = temp_log_data_script(dir.path());
+
+    // set up test-specific server to serve rss feeds
+    let base_url = run_rss_files_server();
+    let feed_url = base_url.join("two_entries_same_pubdate.rss").unwrap();
+
+    // Add feed and filter
+    let feed_cmd = example_add_feed_local1(feed_url);
+    feed_cmd.execute(&cfg).unwrap();
+
+    // "Example" is in the title of both entries
+    let filter_cmd = example_add_filter_local1(vec!["Example"], script_path);
+    filter_cmd.execute(&cfg).unwrap();
+
+    // Execute update with filter
+    let res = UpdateCmd.execute(&cfg);
+    assert!(res.is_ok(), "Error running update with filter on matching entry: {}", res.unwrap_err());
+
+    // Check that the output is correct
+    let output = res.unwrap();
+    assert_eq!(output.successes, 1);
+    assert_eq!(output.updates, 1);
+    assert_eq!(output.failures, 0);
+    assert_eq!(output.executed_feeds.len(), 1);
+    assert_eq!(output.executed_filters.len(), 1);
+
+    // Check that script was run twice, and first entry (in presented order, since they have the
+    // same pubdate and we use Vec::sort_by_key which is stable) was processed first
+    let script_output = std::fs::read_to_string(&log_path).unwrap();
+    let expected_output = vec!["rss action script start",
+    "title: Example entry NYC with random asthmatic words guestbook interspersed",
+    "url: http://www.example.com/blog/post/2",
+    "rss action script end",
+    "rss action script start",
+    "title: Pizza Example marshmallow entry with random listener words interspersed",
+    "url: http://www.example.com/blog/post/1",
+    "rss action script end\n"].join("\n");
+    assert_eq!(script_output, expected_output);
+
+    // Check that filter is updated in db
+    let res = ListFiltersCmd.execute(&cfg);
+    assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
+
+    let output = res.unwrap();
+    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    assert_eq!(output.filters.len(), 1);
+    assert_eq!(output.filters[0].alias, "local1");
+    assert_eq!(output.filters[0].keywords, ["Example",]);
+    assert_eq!(output.filters[0].script_path.get_file_name(), "data_script.sh");
+    assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
+}
+
 /// Test that with one updated filter, and a keyword-matching rss entry, the script is not
 /// executed. This is achieved by just running update twice and checking via the log file that the
 /// script was only executed once.

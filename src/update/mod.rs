@@ -187,14 +187,8 @@ fn process_filters(filters: &[Filter], entries: &[FeedEntry])
 /// easier but also because if we updated the filter's last_updated field there would be no way to
 /// retry failed entries.
 fn process_single_filter(filter: &Filter, entries: &[FeedEntry]) -> Result<(Filter, bool, Vec<ProcessOutput>)> {
-    // TODO: for each entry
-    // if entry matches and is newer than last
-    // set most_recent_updated
-    // call script with environment variables set
-    // wait for output
-
     // The entries must be sorted by pub date for the most_recent_updated to be computed properly.
-    assert!(entries.windows(2).all(|s| s[0].pub_date < s[1].pub_date));
+    assert!(entries.windows(2).all(|s| s[0].pub_date <= s[1].pub_date));
 
     let mut most_recent_updated = filter.last_updated;
     let mut script_outputs = Vec::new();
