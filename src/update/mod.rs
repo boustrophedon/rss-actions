@@ -171,6 +171,7 @@ pub fn update(tx: &mut RSSActionsTx) -> Result<UpdateOutput> {
 /// Run filters' scripts on each entry that matches, and return filters with an updated
 /// `last_updated` time if the filters' script successfully finishes, whether the filter was
 /// actually updated, and the script's stdout and stderr.
+#[allow(clippy::type_complexity)]
 fn process_filters(filters: &[Filter], entries: &[FeedEntry])
         -> Vec<(Filter, Result<(Filter, bool, Vec<ProcessOutput>)>)> {
 

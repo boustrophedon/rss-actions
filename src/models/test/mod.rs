@@ -27,7 +27,7 @@ fn filter_new_fails_on_nonfile() {
 
     let err = res.unwrap_err();
     assert!(err.to_string().contains("The filter's script path is not a file: /usr"),
-            "Filter error message was incorrect: {}", err.to_string());
+            "Filter error message was incorrect: {}", err);
 }
 
 #[test]
@@ -37,7 +37,7 @@ fn filter_new_fails_on_nonexecutable_file() {
 
     let err = res.unwrap_err();
     assert!(err.to_string().contains("The filter's script path is not executable"),
-            "Filter error message was incorrect: {}", err.to_string());
+            "Filter error message was incorrect: {}", err);
 }
 
 #[test]

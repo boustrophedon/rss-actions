@@ -193,7 +193,7 @@ impl<'conn> RSSActionsTx<'conn> {
             }
         }
 
-        if matching_filters.len() == 0 {
+        if matching_filters.is_empty() {
             return Err(anyhow!("No filters matching `{}` on the feed `{}` were found in the database.",
                     &keywords.join(","), &alias));
         }

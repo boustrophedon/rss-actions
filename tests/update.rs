@@ -66,7 +66,7 @@ fn run_rss_files_server() -> Url {
         tokio_runtime.block_on(_run_static_files_server(tx));
     });
     // get the url from the thread
-    return rx.recv().unwrap();
+    rx.recv().unwrap()
 }
 
 fn run_rss_dynamic_server() -> Url {
@@ -77,7 +77,7 @@ fn run_rss_dynamic_server() -> Url {
         tokio_runtime.block_on(_run_dynamic_server(tx));
     });
     // get the url from the thread
-    return rx.recv().unwrap();
+    rx.recv().unwrap()
 }
 
 async fn _run_static_files_server(tx: Sender<Url>) {
@@ -237,7 +237,7 @@ fn test_rss_dynamic_server() {
     // Third access, three items
     {
     // Get the feed
-    let res = reqwest::blocking::get(example_feed_url.clone());
+    let res = reqwest::blocking::get(example_feed_url);
     assert!(res.is_ok(), "Error getting example feed: {:?}", res.unwrap_err());
 
     // just check there are three items
@@ -883,7 +883,7 @@ fn update_multiple_filters_with_multiple_feeds() {
     let script_output = std::fs::read_to_string(&log_path).unwrap();
     assert_eq!(script_output.matches("rss action script start").count(), 1, "script output:\n{}", script_output);
     assert_eq!(script_output.matches("title: Item 2").count(), 1, "script output:\n{}", script_output);
-    assert_eq!(script_output.matches("\n").count(), 4, "script output:\n{}", script_output); // lazy way to count lines
+    assert_eq!(script_output.matches('\n').count(), 4, "script output:\n{}", script_output); // lazy way to count lines
     std::fs::remove_file(&log_path).unwrap();
 
     // dynamic filter watching for the third entry is updated, static and dynamic watching for
@@ -903,7 +903,7 @@ fn update_multiple_filters_with_multiple_feeds() {
     // Update
     // New feed 2 matches
 
-    example_add_filter_local2(vec!["interspersed"], script_path.clone())
+    example_add_filter_local2(vec!["interspersed"], script_path)
         .execute(&cfg).unwrap();
 
     // new filter is present and not updated
@@ -937,7 +937,7 @@ fn update_multiple_filters_with_multiple_feeds() {
         "script output:\n{}", script_output);
     assert_eq!(script_output.matches("title: Pizza Example marshmallow entry with random listener words interspersed").count(), 1,
         "script output:\n{}", script_output);
-    assert_eq!(script_output.matches("\n").count(), 8, "script output:\n{}", script_output); // lazy way to count lines
+    assert_eq!(script_output.matches('\n').count(), 8, "script output:\n{}", script_output); // lazy way to count lines
     std::fs::remove_file(&log_path).unwrap();
 
     // New filter is updated, old ones are not
@@ -1102,7 +1102,7 @@ fn update_with_one_feed_bad_data_succeeds() {
     let res = UpdateCmd.execute(&cfg);
     assert!(res.is_ok(), "Error running update with one failing server: {}", res.unwrap_err());
 
-    let err_msg = format!("Could not parse local1 rss feed from url {}", bad_feed_url.to_string());
+    let err_msg = format!("Could not parse local1 rss feed from url {}", bad_feed_url);
     let output = res.unwrap();
     assert_eq!(output.successes, 1);
     assert_eq!(output.updates, 1);
@@ -1235,7 +1235,7 @@ fn feed_with_failing_script_does_not_update_filter() {
     example_add_feed_local1(feed_url).execute(&cfg).unwrap();
 
     // two filters, both match but first filter's script will always fails
-    let filter_cmd = example_add_filter_local1(vec!["Example", "entry"], script_path.clone());
+    let filter_cmd = example_add_filter_local1(vec!["Example", "entry"], script_path);
     filter_cmd.execute(&cfg).unwrap();
 
     let filter_cmd = example_add_filter_local1(vec!["entry"], PathBuf::from("/bin/true"));

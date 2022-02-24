@@ -159,7 +159,7 @@ enum ListSubArg {
 
 impl RSSActionsArgs {
     pub fn get_cfg_dir(&self) -> Option<&Path> {
-        self.config_dir.as_ref().map(|s| Path::new(s))
+        self.config_dir.as_ref().map(Path::new)
     }
 
     pub fn to_cmd(self) -> Result<Box<dyn RSSActionCLICmd>> {
