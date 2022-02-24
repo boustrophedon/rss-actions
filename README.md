@@ -1,3 +1,5 @@
+[![build-test](https://github.com/boustrophedon/rss-actions/actions/workflows/build-test.yaml/badge.svg)](https://github.com/boustrophedon/rss-actions/actions/workflows/build-test.yaml) [![Coverage Status](https://coveralls.io/repos/github/boustrophedon/rss-actions/badge.svg?branch=github_ci)](https://coveralls.io/github/boustrophedon/rss-actions?branch=github_ci)
+
 # About rss-actions
 
 This is a Rust library and command-line program for tracking RSS feeds and automatically running scripts when they update.

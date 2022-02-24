@@ -1,0 +1,49 @@
+name: build-test
+on: push
+jobs:
+  validate:
+    name: Format and Lint Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install rustfmt and clippy
+        run: rustup component add rustfmt clippy
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- --deny warnings
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Run tests
+        run: cargo test
+
+  doc:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Generate documentation
+        run: cargo doc --no-deps
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Run cargo tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
+        with:
+          args: '--out Lcov --output-dir ./coverage'
+      - name: Upload coverage to coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
