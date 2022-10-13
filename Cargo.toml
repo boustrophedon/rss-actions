@@ -3,6 +3,11 @@ name = "rss-actions"
 version = "0.2.1"
 authors = ["Harry Stern <harry@harrystern.net>"]
 edition = "2021"
+description = "Run scripts automatically on rss feed updates."
+repository = "https://github.com/boustrophedon/rss-actions"
+license = "AGPL-3.0"
+keywords = ["rss", "command-line utility"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "rss-actions"
