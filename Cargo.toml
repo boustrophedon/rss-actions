@@ -6,7 +6,7 @@ edition = "2021"
 description = "Run scripts automatically on rss feed updates."
 repository = "https://github.com/boustrophedon/rss-actions"
 license = "AGPL-3.0"
-keywords = ["rss", "command-line utility"]
+keywords = ["rss", "cli", "utility"]
 categories = ["command-line-utilities"]
 
 [[bin]]
