@@ -278,7 +278,7 @@ fn join_feeds_and_filters(feeds: &[Feed], filters: Vec<Filter>) -> HashMap<Strin
             Some(feed_filters) => feed_filters.push(filter),
             // This should never happen because the database would error first due to constraint
             // violations.
-            None => unreachable!(format!("Missing feed {} for filter {:?}", alias, filter)),
+            None => unreachable!("Missing feed {} for filter {:?}", alias, filter),
         }
     }
     return filters_map;
