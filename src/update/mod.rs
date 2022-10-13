@@ -41,7 +41,7 @@ impl FeedEntry {
         }
 
         let pub_date = entry.pub_date.as_ref().unwrap();
-        let pub_date_res = DateTime::parse_from_rfc2822(&*pub_date);
+        let pub_date_res = DateTime::parse_from_rfc2822(pub_date);
         if let Err(err) = pub_date_res {
             return Err(err)
                 .context("Entry pub date did not parse correctly.");
