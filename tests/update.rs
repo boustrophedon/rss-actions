@@ -122,21 +122,21 @@ async fn _run_dynamic_server(tx: Sender<Url>) {
 fn make_feed(count: i64) -> rss::Channel {
     let mut items = Vec::new();
     for i in 0..(count+1) {
-        let start_date = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+        let start_date = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
         let offset = Duration::days(i);
         let date = start_date + offset;
         items.push(rss::ItemBuilder::default()
             .title(format!("Item {}", i))
             .link(format!("https://baddata.example.com/item/{}", i))
             .pub_date(date.to_rfc2822())
-            .build().unwrap()
+            .build()
         )
     }
     rss::ChannelBuilder::default()
         .title("(non)Dynamic RSS title")
         .description("This is an example of a dynamically-generated RSS feed")
         .items(items)
-        .build().unwrap()
+        .build()
 }
 
 #[test]
@@ -342,8 +342,8 @@ fn more_recent_entry_updates_filter() {
     assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run once
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
-    let expected_output = vec!["rss action script start",
+    let script_output = std::fs::read_to_string(log_path).unwrap();
+    let expected_output = ["rss action script start",
     "title: Example entry NYC with random asthmatic words guestbook interspersed",
     "url: http://www.example.com/blog/post/2",
     "rss action script end\n"].join("\n");
@@ -354,7 +354,7 @@ fn more_recent_entry_updates_filter() {
     assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
     let output = res.unwrap();
-    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    let timestamp = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap();
     assert_eq!(output.filters.len(), 1);
     assert_eq!(output.filters[0].last_updated.unwrap(), timestamp);
 }
@@ -391,8 +391,8 @@ fn two_matching_entries_updates_last_updated_to_newest() {
     assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run twice, and older entry was processed first
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
-    let expected_output = vec!["rss action script start",
+    let script_output = std::fs::read_to_string(log_path).unwrap();
+    let expected_output = ["rss action script start",
     "title: Pizza Example marshmallow entry with random listener words interspersed",
     "url: http://www.example.com/blog/post/1",
     "rss action script end",
@@ -407,7 +407,7 @@ fn two_matching_entries_updates_last_updated_to_newest() {
     assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
     let output = res.unwrap();
-    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    let timestamp = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap();
     assert_eq!(output.filters.len(), 1);
     assert_eq!(output.filters[0].alias, "local1");
     assert_eq!(output.filters[0].keywords, ["Example",]);
@@ -447,8 +447,8 @@ fn two_new_entries_same_pubdate_succeed() {
 
     // Check that script was run twice, and first entry (in presented order, since they have the
     // same pubdate and we use Vec::sort_by_key which is stable) was processed first
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
-    let expected_output = vec!["rss action script start",
+    let script_output = std::fs::read_to_string(log_path).unwrap();
+    let expected_output = ["rss action script start",
     "title: Example entry NYC with random asthmatic words guestbook interspersed",
     "url: http://www.example.com/blog/post/2",
     "rss action script end",
@@ -463,7 +463,7 @@ fn two_new_entries_same_pubdate_succeed() {
     assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
     let output = res.unwrap();
-    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    let timestamp = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap();
     assert_eq!(output.filters.len(), 1);
     assert_eq!(output.filters[0].alias, "local1");
     assert_eq!(output.filters[0].keywords, ["Example",]);
@@ -514,11 +514,11 @@ fn older_entry_does_not_update_filter() {
     assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run once
-    let expected_output = vec!["rss action script start",
+    let expected_output = ["rss action script start",
     "title: Example entry NYC with random asthmatic words guestbook interspersed",
     "url: http://www.example.com/blog/post/2",
     "rss action script end\n"].join("\n");
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
+    let script_output = std::fs::read_to_string(log_path).unwrap();
     assert_eq!(script_output, expected_output);
 
     // Check that filter is updated in db
@@ -526,7 +526,7 @@ fn older_entry_does_not_update_filter() {
     assert!(res.is_ok(), "Executing list command failed: {:?}", res.unwrap_err());
 
     let output = res.unwrap();
-    let timestamp = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
+    let timestamp = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap();
     assert_eq!(output.filters.len(), 1);
     assert_eq!(output.filters[0].alias, "local1");
     assert_eq!(output.filters[0].keywords, ["NYC", "asthmatic", "guestbook"]);
@@ -564,7 +564,7 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run 1 times via log
-    let expected_output = vec!["rss action script start",
+    let expected_output = ["rss action script start",
     "title: Item 0",
     "url: https://baddata.example.com/item/0",
     "rss action script end\n"].join("\n");
@@ -574,7 +574,7 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     // Check that the output of list filters has the correct last_updated date for the filter
     let output = ListFiltersCmd.execute(&cfg).unwrap();
 
-    let timestamp = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+    let timestamp = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
     assert_eq!(output.filters.len(), 1);
     assert_eq!(output.filters[0].alias, "local1");
     assert_eq!(output.filters[0].keywords, ["Item"]);
@@ -600,7 +600,7 @@ fn update_filter_with_new_entries_only_processes_new_items() {
     assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run 1 time with the newer item
-    let expected_output = vec!["rss action script start",
+    let expected_output = ["rss action script start",
     "title: Item 1",
     "url: https://baddata.example.com/item/1",
     "rss action script end\n"].join("\n");
@@ -609,7 +609,7 @@ fn update_filter_with_new_entries_only_processes_new_items() {
 
     // Check that the output of list filters has the correct last_updated date for the filter
     let output = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp = Utc.ymd(2000, 1, 2).and_hms(0, 0, 0);
+    let timestamp = Utc.with_ymd_and_hms(2000, 1, 2, 0, 0, 0).unwrap();
     assert_eq!(output.filters.len(), 1);
     assert_eq!(output.filters[0].alias, "local1");
     assert_eq!(output.filters[0].keywords, ["Item"]);
@@ -651,14 +651,14 @@ fn update_filter_with_empty_keywords_matches_all_entries() {
     assert_eq!(output.executed_filters.len(), 1);
 
     // Check that script was run 10 times via log
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
+    let script_output = std::fs::read_to_string(log_path).unwrap();
     assert_eq!(script_output.matches("start").count(), 10);
     assert_eq!(script_output.matches("end").count(), 10);
 
     // Check that the output of list filters has the correct last_updated date for the filter
     let output = ListFiltersCmd.execute(&cfg).unwrap();
 
-    let timestamp = Utc.ymd(2000, 1, 10).and_hms(0, 0, 0);
+    let timestamp = Utc.with_ymd_and_hms(2000, 1, 10, 0, 0, 0).unwrap();
     assert_eq!(output.filters.len(), 1);
     assert_eq!(output.filters[0].alias, "local1");
     assert_eq!(output.filters[0].keywords, Vec::<String>::new());
@@ -707,8 +707,8 @@ fn update_one_feed_new_and_one_not_updated() {
 
     // List filters and check that both updated
     let output = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp1 = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
-    let timestamp2 = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+    let timestamp1 = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap();
+    let timestamp2 = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
 
     assert_eq!(output.filters.len(), 2);
     assert_eq!(output.filters[0].alias, "local2");
@@ -733,8 +733,8 @@ fn update_one_feed_new_and_one_not_updated() {
 
     // List filters and check that 1 updated and 1 not updated
     let output = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp1 = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0);
-    let timestamp2 = Utc.ymd(2000, 1, 2).and_hms(0, 0, 0);
+    let timestamp1 = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap();
+    let timestamp2 = Utc.with_ymd_and_hms(2000, 1, 2, 0, 0, 0).unwrap();
 
     assert_eq!(output.filters.len(), 2);
     assert_eq!(output.filters[0].alias, "local2");
@@ -830,8 +830,8 @@ fn update_multiple_filters_with_multiple_feeds() {
     std::fs::remove_file(&log_path).unwrap();
 
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
-    let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
+    let timestamp1: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
+    let timestamp2: DateTime<Local> = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap().into();
 
     let filter_line1 = ["local1", "Example", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line2 = ["local3", "0, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
@@ -858,8 +858,8 @@ fn update_multiple_filters_with_multiple_feeds() {
 
     // same as previous, no updates
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
-    let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
+    let timestamp1: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
+    let timestamp2: DateTime<Local> = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap().into();
 
     let filter_line1 = ["local1", "Example", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line2 = ["local3", "0, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
@@ -889,9 +889,9 @@ fn update_multiple_filters_with_multiple_feeds() {
     // dynamic filter watching for the third entry is updated, static and dynamic watching for
     // second are not.
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
-    let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 3).and_hms(0, 0, 0).into();
-    let timestamp3: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
+    let timestamp1: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
+    let timestamp2: DateTime<Local> = Utc.with_ymd_and_hms(2000, 1, 3, 0, 0, 0).unwrap().into();
+    let timestamp3: DateTime<Local> = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap().into();
 
     let filter_line1 = ["local1", "Example", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line2 = ["local3", "2, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
@@ -908,9 +908,9 @@ fn update_multiple_filters_with_multiple_feeds() {
 
     // new filter is present and not updated
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp1: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
-    let timestamp2: DateTime<Local> = Utc.ymd(2000, 1, 3).and_hms(0, 0, 0).into();
-    let timestamp3: DateTime<Local> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0).into();
+    let timestamp1: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
+    let timestamp2: DateTime<Local> = Utc.with_ymd_and_hms(2000, 1, 3, 0, 0, 0).unwrap().into();
+    let timestamp3: DateTime<Local> = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap().into();
 
     let filter_line1 = ["local1", "Example", "data_script.sh", &timestamp1.to_string()].join("\t");
     let filter_line2 = ["local3", "2, Item", "data_script.sh", &timestamp2.to_string()].join("\t");
@@ -1054,16 +1054,16 @@ fn update_with_one_feed_failing_succeeds() {
                "Failed to download local1 rss feed from url http://169.254.0.1/doesNotExist.rss");
 
     // Check that script was run once
-    let expected_output = vec!["rss action script start",
+    let expected_output = ["rss action script start",
     "title: Example entry",
     "url: http://www.example.com/blog/post/1",
     "rss action script end\n"].join("\n");
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
+    let script_output = std::fs::read_to_string(log_path).unwrap();
     assert_eq!(script_output, expected_output);
 
     // List filters and check that 1 updated and 1 not updated
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
+    let timestamp: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
 
     let filter_line1 = ["local2", "Example, entry", "data_script.sh", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "xxx", "data_script.sh", "Never updated"].join("\t");
@@ -1113,16 +1113,16 @@ fn update_with_one_feed_bad_data_succeeds() {
         .contains(&err_msg));
 
     // Check that script was run once
-    let expected_output = vec!["rss action script start",
+    let expected_output = ["rss action script start",
     "title: Example entry",
     "url: http://www.example.com/blog/post/1",
     "rss action script end\n"].join("\n");
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
+    let script_output = std::fs::read_to_string(log_path).unwrap();
     assert_eq!(script_output, expected_output);
 
     // List filters and check that 1 updated and 1 not updated
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
+    let timestamp: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
 
     let filter_line1 = ["local2", "Example, entry", "data_script.sh", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "xxx", "data_script.sh", "Never updated"].join("\t");
@@ -1207,16 +1207,16 @@ fn feed_with_missing_data_does_not_update_filter() {
                "1 entries in feed local1 had data errors");
 
     // Check that script was run once
-    let expected_output = vec!["rss action script start",
+    let expected_output = ["rss action script start",
     "title: Example entry",
     "url: http://www.example.com/blog/post/1",
     "rss action script end\n"].join("\n");
-    let script_output = std::fs::read_to_string(&log_path).unwrap();
+    let script_output = std::fs::read_to_string(log_path).unwrap();
     assert_eq!(script_output, expected_output);
 
     // List filters and check that it says not updated
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
+    let timestamp: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
 
     let filter_line1 = ["local2", "Example, entry", "data_script.sh", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "missing, pubdate", "data_script.sh", "Never updated"].join("\t");
@@ -1257,7 +1257,7 @@ fn feed_with_failing_script_does_not_update_filter() {
 
     // List filters and check that it says not updated
     let message = ListFiltersCmd.execute(&cfg).unwrap();
-    let timestamp: DateTime<Local> = Utc.ymd(2009, 9, 6).and_hms(16, 20, 0).into();
+    let timestamp: DateTime<Local> = Utc.with_ymd_and_hms(2009, 9, 6, 16, 20, 0).unwrap().into();
 
     let filter_line1 = ["local1", "entry", "true", &timestamp.to_string()].join("\t");
     let filter_line2 = ["local1", "Example, entry", "false", "Never updated"].join("\t");

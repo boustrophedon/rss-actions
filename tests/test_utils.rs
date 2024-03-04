@@ -49,11 +49,11 @@ pub fn temp_config() -> (TempDir, Config) {
     (test_dir, cfg)
 }
 
-//// Example no-parameter commands
-//// We could write these inline but if they need to change it's nice to uniformly have them behind
-//// convenience functions.
+/// Example no-parameter commands
+/// We could write these inline but if they need to change it's nice to uniformly have them behind
+/// convenience functions.
 
-//// Example Feeds
+/// Example Feeds
 
 pub fn example_add_feed1() -> AddFeedCmd {
     AddFeedCmd(
@@ -87,7 +87,7 @@ pub fn example_add_feed_local3(url: Url) -> AddFeedCmd {
     )
 }
 
-//// Example Filters
+/// Example Filters
 
 /// Example filter with empty filter keywords
 pub fn example_add_filter_empty() -> AddFilterCmd {
@@ -162,7 +162,7 @@ pub fn example_add_filter_local3(strings: Vec<&str>, script_path: PathBuf) -> Ad
     )
 }
 
-//// Delete filter example
+/// Delete filter example
 
 /// remove filter from `example_add_filter1()`
 pub fn example_delete_filter1() -> DeleteFilterCmd {
@@ -185,7 +185,7 @@ pub fn example_delete_filter_bad_feed_alias() -> DeleteFilterCmd {
     DeleteFilterCmd("example_nonexistant".into(), to_strings(vec!["fake"]))
 }
 
-//// Utility functions
+/// Utility functions
 
 fn to_strings(strs: Vec<&str>) -> Vec<String> {
     strs.iter().map(|s| s.to_string()).collect()

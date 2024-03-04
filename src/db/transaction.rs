@@ -217,7 +217,7 @@ impl<'conn> RSSActionsTx<'conn> {
     }
 
     pub fn delete_feed(&mut self, alias: &str) -> Result<()> {
-        self.tx.pragma_update(None, "foreign_keys", &true)
+        self.tx.pragma_update(None, "foreign_keys", true)
             .context("failed to enable foreign keys pragma")?;
         let res = self.tx.execute(
             "DELETE FROM feeds

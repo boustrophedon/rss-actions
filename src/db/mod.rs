@@ -33,7 +33,7 @@ impl RSSActionsDb {
         // check for existing db before calling sqlite's open because it creates the file.
         let existing_db = db_path.is_file();
         let connection = Connection::open(db_path)?;
-        connection.pragma_update(None, "foreign_keys", &true)
+        connection.pragma_update(None, "foreign_keys", true)
             .context("failed to enable foreign keys pragma")?;
 
         let mut db = RSSActionsDb {
@@ -56,7 +56,7 @@ impl RSSActionsDb {
     /// Open an in-memory db and create tables. cfg(test) only.
     pub fn open_in_memory() -> Result<RSSActionsDb> {
         let connection = Connection::open_in_memory()?;
-        connection.pragma_update(None, "foreign_keys", &true)
+        connection.pragma_update(None, "foreign_keys", true)
             .context("failed to enable foreign keys pragma")?;
 
         let mut db = RSSActionsDb {

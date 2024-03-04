@@ -58,7 +58,7 @@ impl Config {
         let cfg_file_data = toml::to_string(&self)
             .context("Could not serialize config to toml.")?;
 
-        std::fs::write(&config_file, cfg_file_data)
+        std::fs::write(config_file, cfg_file_data)
             .with_context(|| format!("Could not write config data to file: {:?}", config_file))?;
 
         Ok(())
