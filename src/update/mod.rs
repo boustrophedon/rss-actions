@@ -85,7 +85,9 @@ pub fn update(tx: &mut RSSActionsTx) -> Result<UpdateOutput> {
     let download_results = download_feeds(feeds);
     // If all downloads resulted in an error, network is probably down.
     if download_results.iter().all(|(_, res)| res.is_err()) {
-        return Err(anyhow!("All RSS feed downloads failed. Is the network down?"));
+        // We know all results are errors so take the first one
+        let err = download_results.into_iter().next().unwrap().1.unwrap_err();
+        return Err(anyhow!("All RSS feed downloads failed. Is the network down? Example error:\n {err}"));
     }
 
     // Parse relevant data from downloaded RSS feeds
