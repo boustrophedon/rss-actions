@@ -1155,8 +1155,8 @@ fn all_feeds_fail_download_network_message() {
     // Execute update and check for "network error" message
     let res = UpdateCmd.execute(&cfg);
     assert!(res.is_err(), "Update succeeded with all servers failing: {:?}", res.unwrap());
-    assert_eq!(res.unwrap_err().to_string(),
-        "All RSS feed downloads failed. Is the network down?");
+    assert!(res.unwrap_err().to_string().contains(
+        "All RSS feed downloads failed. Is the network down? Example error:\n Failed to download local1 rss feed"));
 
     // List filters and check that it says not updated
     let message = ListFiltersCmd.execute(&cfg).unwrap();
